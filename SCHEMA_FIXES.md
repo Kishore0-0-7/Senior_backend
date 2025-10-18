@@ -8,6 +8,15 @@ Fixed multiple API routes to match the actual database schema in `complete_schem
 
 ---
 
+## Table of Contents
+
+1. [Admin Routes Fix](#1-admin-routes-fix)
+2. [Certificate Routes Fix](#2-certificate-routes-fix)
+3. [Event Routes Fix](#3-event-routes-fix)
+4. [Attendance Routes Fix](#4-attendance-routes-fix)
+
+---
+
 ## 1. Admin Routes Fix
 
 ### Issue
