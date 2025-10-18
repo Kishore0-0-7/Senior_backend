@@ -322,12 +322,7 @@ router.post(
                    status = 'attended'
                WHERE id = $4
                RETURNING *`,
-              [
-                photoUrl,
-                latitude,
-                longitude,
-                existingAttendance.rows[0].id,
-              ]
+              [photoUrl, latitude, longitude, existingAttendance.rows[0].id]
             );
           } else {
             // Create new record
