@@ -11,6 +11,7 @@ import { notFoundHandler } from "./middleware/notFoundHandler";
 
 // Import routes
 import authRoutes from "./routes/auth.routes";
+import adminRoutes from "./routes/admin.routes";
 import studentRoutes from "./routes/student.routes";
 import eventRoutes from "./routes/event.routes";
 import attendanceRoutes from "./routes/attendance.routes";
@@ -108,6 +109,7 @@ app.get("/health", (req, res) => {
 
 // API Routes
 app.use(`${API_PREFIX}/auth`, authRoutes);
+app.use(`${API_PREFIX}/admin`, adminRoutes);
 app.use(`${API_PREFIX}/students`, studentRoutes);
 app.use(`${API_PREFIX}/events`, eventRoutes);
 app.use(`${API_PREFIX}/attendance`, attendanceRoutes);
