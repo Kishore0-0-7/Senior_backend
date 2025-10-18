@@ -171,7 +171,7 @@ router.post(
         throw new AppError("Please upload a file", 400);
       }
 
-      const { title, category, issue_date, description } = req.body;
+      const { title, certificate_type } = req.body;
 
       // Get student ID and email from user
       const studentResult = await query(
@@ -193,16 +193,13 @@ router.post(
 
       const result = await query(
         `INSERT INTO certificates (
-        student_id, title, category, issue_date, description, 
-        file_name, file_url, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'Pending')
+        student_id, title, certificate_type, file_name, file_url, status
+      ) VALUES ($1, $2, $3, $4, $5, 'Pending')
       RETURNING *`,
         [
           studentId,
           title,
-          category || null,
-          issue_date || null,
-          description || null,
+          certificate_type || null,
           req.file.originalname,
           fileUrl,
         ]
@@ -502,8 +499,7 @@ router.put(
       const { id } = req.params;
       const userId = req.user?.id;
       const userRole = req.user?.role;
-      const { title, category, issue_date, description, status, remarks } =
-        req.body;
+      const { title, certificate_type, status, remarks } = req.body;
 
       const certResult = await query(
         `SELECT c.*, s.user_id as owner_user_id, u.email as owner_email
@@ -545,21 +541,17 @@ router.put(
       const result = await query(
         `UPDATE certificates SET
           title = COALESCE($1, title),
-          category = COALESCE($2, category),
-          issue_date = COALESCE($3, issue_date),
-          description = COALESCE($4, description),
-          file_name = $5,
-          file_url = $6,
-          status = COALESCE($7, status),
-          remarks = COALESCE($8, remarks),
+          certificate_type = COALESCE($2, certificate_type),
+          file_name = $3,
+          file_url = $4,
+          status = COALESCE($5, status),
+          remarks = COALESCE($6, remarks),
           updated_at = NOW()
-        WHERE id = $9
+        WHERE id = $7
         RETURNING *`,
         [
           title,
-          category,
-          issue_date,
-          description,
+          certificate_type,
           originalFileName,
           fileUrl,
           isAdminUpdatingStatus ? status : null,
