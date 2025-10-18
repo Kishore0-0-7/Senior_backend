@@ -11,8 +11,24 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ) => {
-  const statusCode = err.statusCode || 500;
-  const message = err.message || "Internal Server Error";
+  let statusCode = err.statusCode;
+
+  if (typeof (err as any).status === "number") {
+    statusCode = (err as any).status;
+  }
+
+  if ((err as any).type === "entity.too.large") {
+    statusCode = 413;
+  }
+
+  if (!statusCode) {
+    statusCode = 500;
+  }
+
+  const message =
+    (err as any).type === "entity.too.large"
+      ? "Uploaded data is too large. Please try a smaller photo."
+      : err.message || "Internal Server Error";
 
   console.error("Error:", {
     message: err.message,

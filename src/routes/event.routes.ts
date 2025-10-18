@@ -684,13 +684,32 @@ router.get(
         s.email as student_email,
         s.department,
         s.college,
-        s.registration_number
+        s.registration_number,
+        al.proof_photo_url,
+        al.latitude,
+        al.longitude,
+        al.photo_taken_at
       FROM event_participants ep
       JOIN students s ON ep.student_id = s.id
+      LEFT JOIN attendance_logs al ON al.student_id = ep.student_id AND al.event_id = ep.event_id
       WHERE ep.event_id = $1
       ORDER BY ep.check_in_time DESC`,
         [id]
       );
+
+      console.log("=== EVENT PARTICIPANTS QUERY RESULT ===");
+      console.log("Event ID:", id);
+      console.log("Total participants:", result.rows.length);
+      result.rows.forEach((row, idx) => {
+        console.log(`Participant ${idx + 1}:`, {
+          student_name: row.student_name,
+          proof_photo_url: row.proof_photo_url,
+          latitude: row.latitude,
+          longitude: row.longitude,
+          photo_taken_at: row.photo_taken_at,
+        });
+      });
+      console.log("=====================================");
 
       res.json({
         success: true,

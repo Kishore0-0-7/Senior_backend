@@ -36,6 +36,7 @@ const computeUploadsRoot = () => {
 
 const uploadsRoot = computeUploadsRoot();
 const certificatesRoot = path.join(uploadsRoot, "certificates");
+const attendancePhotosRoot = path.join(uploadsRoot, "attendance-photos");
 
 const ensureDirectory = (dirPath: string) => {
   if (!fs.existsSync(dirPath)) {
@@ -45,6 +46,7 @@ const ensureDirectory = (dirPath: string) => {
 
 ensureDirectory(uploadsRoot);
 ensureDirectory(certificatesRoot);
+ensureDirectory(attendancePhotosRoot);
 
 // Middleware
 app.use(helmet()); // Security headers
@@ -56,8 +58,10 @@ app.use(
 );
 app.use(compression()); // Compress responses
 app.use(morgan("dev")); // Request logging
-app.use(express.json()); // Parse JSON bodies
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
+const BODY_LIMIT = process.env.API_BODY_LIMIT || "100mb";
+
+app.use(express.json({ limit: BODY_LIMIT })); // Parse JSON bodies with higher limit for photo uploads
+app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT })); // Parse URL-encoded bodies
 
 // Static files for uploads with legacy path migration
 app.get(

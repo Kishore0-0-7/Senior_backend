@@ -2,6 +2,7 @@ import { Router, Response, NextFunction } from "express";
 import { query } from "../config/database";
 import { AppError } from "../middleware/errorHandler";
 import { authenticate, authorize, AuthRequest } from "../middleware/auth";
+import { saveAttendancePhoto, validatePhotoData } from "../utils/photoStorage";
 
 const GRACE_PERIOD_MINUTES = 15;
 
@@ -233,6 +234,196 @@ router.post(
   }
 );
 
+// Upload proof photo for attendance (Student marks attendance + takes photo)
+router.post(
+  "/upload-photo",
+  authenticate,
+  authorize("student"),
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const {
+        attendanceLogId,
+        photoData,
+        latitude,
+        longitude,
+        eventId,
+        qrData,
+        location,
+        deviceInfo,
+      } = req.body;
+
+      // Validate photo data
+      if (!photoData) {
+        throw new AppError("Photo data is required", 400);
+      }
+
+      const validation = validatePhotoData(photoData);
+      if (!validation.valid) {
+        throw new AppError(validation.error || "Invalid photo data", 400);
+      }
+
+      // Get student ID from user
+      const studentResult = await query(
+        "SELECT id FROM students WHERE user_id = $1",
+        [req.user?.id]
+      );
+
+      if (studentResult.rows.length === 0) {
+        throw new AppError("Student profile not found", 404);
+      }
+
+      const studentId = studentResult.rows[0].id;
+
+      // Save photo and get URL
+      const { photoUrl, fileName, fileSize } = await saveAttendancePhoto(
+        photoData,
+        eventId || "unknown",
+        studentId
+      );
+
+      let result;
+
+      // If attendanceLogId provided, update existing log with photo and location
+      if (attendanceLogId) {
+        result = await query(
+          `UPDATE attendance_logs
+           SET proof_photo_url = $1,
+               latitude = $2,
+               longitude = $3,
+               photo_taken_at = CURRENT_TIMESTAMP
+           WHERE id = $4 AND student_id = $5
+           RETURNING *`,
+          [photoUrl, latitude, longitude, attendanceLogId, studentId]
+        );
+
+        if (result.rows.length === 0) {
+          throw new AppError("Attendance log not found", 404);
+        }
+      } else if (eventId) {
+        // Create new attendance log with photo and location
+        try {
+          // Check if event exists
+          const eventResult = await query(
+            "SELECT * FROM events WHERE id = $1",
+            [eventId]
+          );
+
+          if (eventResult.rows.length === 0) {
+            throw new AppError("Event not found", 404);
+          }
+
+          const event = eventResult.rows[0];
+          const attendanceLocation = location || event.venue || null;
+
+          // Check if student already has attendance for this event
+          const existingAttendance = await query(
+            `SELECT id FROM attendance_logs WHERE student_id = $1 AND event_id = $2`,
+            [studentId, eventId]
+          );
+
+          if (existingAttendance.rows.length > 0) {
+            // Update existing record
+            result = await query(
+              `UPDATE attendance_logs
+               SET proof_photo_url = $1,
+                   latitude = $2,
+                   longitude = $3,
+                   photo_taken_at = CURRENT_TIMESTAMP,
+                   location = COALESCE($4, location),
+                   status = 'present'
+               WHERE id = $5
+               RETURNING *`,
+              [
+                photoUrl,
+                latitude,
+                longitude,
+                attendanceLocation,
+                existingAttendance.rows[0].id,
+              ]
+            );
+          } else {
+            // Create new record
+            result = await query(
+              `INSERT INTO attendance_logs 
+               (student_id, event_id, status, location, proof_photo_url, latitude, longitude, photo_taken_at, scanned_qr_data, device_info)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, $8, $9)
+               RETURNING *`,
+              [
+                studentId,
+                eventId,
+                "present",
+                attendanceLocation,
+                photoUrl,
+                latitude,
+                longitude,
+                qrData,
+                deviceInfo ? JSON.stringify(deviceInfo) : null,
+              ]
+            );
+          }
+
+          // Also ensure event_participants record exists/is updated
+          const participantCheck = await query(
+            `SELECT id FROM event_participants WHERE student_id = $1 AND event_id = $2`,
+            [studentId, eventId]
+          );
+
+          if (participantCheck.rows.length > 0) {
+            // Update existing participant record
+            await query(
+              `UPDATE event_participants 
+               SET status = 'attended', 
+                   check_in_time = CURRENT_TIMESTAMP,
+                   notes = 'Photo proof uploaded'
+               WHERE student_id = $1 AND event_id = $2`,
+              [studentId, eventId]
+            );
+          } else {
+            // Create new participant record
+            await query(
+              `INSERT INTO event_participants (student_id, event_id, status, check_in_time, notes)
+               VALUES ($1, $2, 'attended', CURRENT_TIMESTAMP, 'Photo proof uploaded')`,
+              [studentId, eventId]
+            );
+          }
+        } catch (error) {
+          throw new AppError(
+            `Failed to create attendance record: ${error}`,
+            400
+          );
+        }
+      } else {
+        throw new AppError(
+          "Either attendanceLogId or eventId must be provided",
+          400
+        );
+      }
+
+      const attendanceLog = result.rows[0];
+
+      res.json({
+        success: true,
+        message: "Photo uploaded and attendance recorded successfully",
+        data: {
+          id: attendanceLog.id,
+          studentId: attendanceLog.student_id,
+          eventId: attendanceLog.event_id,
+          photoUrl,
+          fileName,
+          fileSize,
+          latitude: attendanceLog.latitude,
+          longitude: attendanceLog.longitude,
+          photoTakenAt: attendanceLog.photo_taken_at,
+          status: attendanceLog.status,
+          location: attendanceLog.location,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // Get student attendance history
 router.get(
   "/student/:studentId",
@@ -292,9 +483,14 @@ router.get(
         s.email as student_email,
         s.department,
         s.college,
-        s.registration_number
+        s.registration_number,
+        al.proof_photo_url,
+        al.latitude,
+        al.longitude,
+        al.photo_taken_at
       FROM event_participants ep
       JOIN students s ON ep.student_id = s.id
+      LEFT JOIN attendance_logs al ON al.student_id = ep.student_id AND al.event_id = ep.event_id
       WHERE ep.event_id = $1
       ORDER BY ep.check_in_time DESC`,
         [eventId]
@@ -336,6 +532,107 @@ router.put(
       res.json({
         success: true,
         data: result.rows[0],
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Upload attendance photo with location
+router.post(
+  "/upload-photo",
+  authenticate,
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const {
+        photoData,
+        eventId,
+        latitude,
+        longitude,
+        attendanceLogId,
+        qrData,
+        location,
+        deviceInfo,
+      } = req.body;
+
+      // Validate required fields
+      if (!photoData || !eventId) {
+        throw new AppError("Photo data and event ID are required", 400);
+      }
+
+      // Validate photo data
+      validatePhotoData(photoData);
+
+      // Get student ID from user
+      const studentResult = await query(
+        "SELECT id FROM students WHERE user_id = $1",
+        [req.user?.id]
+      );
+
+      if (studentResult.rows.length === 0) {
+        throw new AppError("Student profile not found", 404);
+      }
+
+      const studentId = studentResult.rows[0].id;
+
+      // Save photo to disk
+      const photoUrl = await saveAttendancePhoto(photoData, eventId, studentId);
+
+      // Check if attendance log already exists
+      let attendanceLog;
+      if (attendanceLogId) {
+        // Update existing attendance log
+        const updateResult = await query(
+          `UPDATE attendance_logs 
+           SET proof_photo_url = $1, 
+               latitude = $2, 
+               longitude = $3,
+               photo_taken_at = NOW()
+           WHERE id = $4
+           RETURNING *`,
+          [photoUrl, latitude, longitude, attendanceLogId]
+        );
+        attendanceLog = updateResult.rows[0];
+      } else {
+        // Create new attendance log with photo
+        const insertResult = await query(
+          `INSERT INTO attendance_logs 
+           (event_id, student_id, status, qr_data, location, device_info, 
+            proof_photo_url, latitude, longitude, photo_taken_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+           RETURNING *`,
+          [
+            eventId,
+            studentId,
+            "present",
+            qrData || null,
+            location || null,
+            deviceInfo ? JSON.stringify(deviceInfo) : null,
+            photoUrl,
+            latitude,
+            longitude,
+          ]
+        );
+        attendanceLog = insertResult.rows[0];
+
+        // Also update or create event_participants record
+        await query(
+          `INSERT INTO event_participants (event_id, student_id, status, check_in_time)
+           VALUES ($1, $2, 'attended', NOW())
+           ON CONFLICT (event_id, student_id) 
+           DO UPDATE SET status = 'attended', check_in_time = NOW()`,
+          [eventId, studentId]
+        );
+      }
+
+      res.json({
+        success: true,
+        data: {
+          attendanceLog,
+          photoUrl,
+        },
+        message: "Attendance photo uploaded successfully",
       });
     } catch (error) {
       next(error);
