@@ -73,10 +73,10 @@ router.post(
         // Generate JWT token
         const jwtSecret = process.env.JWT_SECRET || "fallback_secret_key";
         const expiresIn = process.env.JWT_EXPIRES_IN || "7d";
-        
+
         // @ts-ignore - jwt.sign type inference issue
         const token = jwt.sign(
-          { id: userId, email: email, role: 'admin' },
+          { id: userId, email: email, role: "admin" },
           jwtSecret,
           { expiresIn }
         );
@@ -88,7 +88,7 @@ router.post(
             user: {
               id: userId,
               email: email,
-              role: 'admin',
+              role: "admin",
             },
             admin: {
               id: adminResult.rows[0].id,
@@ -133,7 +133,10 @@ router.post(
       const user = result.rows[0];
 
       // Verify password
-      const isValidPassword = await bcrypt.compare(password, user.password_hash);
+      const isValidPassword = await bcrypt.compare(
+        password,
+        user.password_hash
+      );
       if (!isValidPassword) {
         throw new AppError("Invalid credentials", 401);
       }
@@ -149,7 +152,7 @@ router.post(
       // Generate JWT token
       const jwtSecret = process.env.JWT_SECRET || "fallback_secret_key";
       const expiresIn = process.env.JWT_EXPIRES_IN || "7d";
-      
+
       // @ts-ignore - jwt.sign type inference issue
       const token = jwt.sign(
         { id: user.id, email: user.email, role: user.role },
@@ -243,7 +246,9 @@ router.get(
         throw new AppError("Access denied. Admin role required.", 403);
       }
 
-      const result = await query("SELECT * FROM events ORDER BY event_date DESC");
+      const result = await query(
+        "SELECT * FROM events ORDER BY event_date DESC"
+      );
 
       res.json({
         success: true,
