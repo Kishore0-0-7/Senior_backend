@@ -67,7 +67,7 @@ router.post(
   authorize("student"),
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      const { qrData, location, deviceInfo } = req.body;
+      const { qrData, deviceInfo } = req.body;
 
       if (!qrData) {
         throw new AppError("QR data is required", 400);
@@ -150,8 +150,6 @@ router.post(
         [eventId, studentId]
       );
 
-      const attendanceLocation = location || event.venue || null;
-
       if (existingParticipant.rows.length > 0) {
         // Update status based on check-in timing
         await query(
@@ -182,32 +180,29 @@ router.post(
         attendanceResult = await query(
           `UPDATE attendance_logs
            SET status = $2,
-               location = COALESCE($3, location),
-               scanned_qr_data = COALESCE($4, scanned_qr_data),
-               device_info = COALESCE($5, device_info),
+               qr_data = COALESCE($3, qr_data),
+               device_info = COALESCE($4, device_info),
                timestamp = CURRENT_TIMESTAMP
            WHERE id = $1
            RETURNING *`,
           [
             existingAttendanceLog.rows[0].id,
             attendanceStatus,
-            attendanceLocation,
             qrData,
             deviceInfo ? JSON.stringify(deviceInfo) : null,
           ]
         );
       } else {
         attendanceResult = await query(
-          `INSERT INTO attendance_logs (student_id, event_id, status, location, scanned_qr_data, device_info)
-        VALUES ($1, $2, $6, $3, $4, $5)
+          `INSERT INTO attendance_logs (student_id, event_id, status, qr_data, device_info)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING *`,
           [
             studentId,
             eventId,
-            attendanceLocation,
+            attendanceStatus,
             qrData,
             deviceInfo ? JSON.stringify(deviceInfo) : null,
-            attendanceStatus,
           ]
         );
       }
@@ -223,7 +218,6 @@ router.post(
           eventId: attendanceLog.event_id,
           eventName: event.name,
           eventVenue: event.venue,
-          location: attendanceLog.location || event.venue,
           checkInTime: attendanceLog.timestamp || new Date().toISOString(),
           status: attendanceLog.status,
         },
@@ -248,7 +242,6 @@ router.post(
         longitude,
         eventId,
         qrData,
-        location,
         deviceInfo,
       } = req.body;
 
@@ -312,9 +305,6 @@ router.post(
             throw new AppError("Event not found", 404);
           }
 
-          const event = eventResult.rows[0];
-          const attendanceLocation = location || event.venue || null;
-
           // Check if student already has attendance for this event
           const existingAttendance = await query(
             `SELECT id FROM attendance_logs WHERE student_id = $1 AND event_id = $2`,
@@ -329,15 +319,13 @@ router.post(
                    latitude = $2,
                    longitude = $3,
                    photo_taken_at = CURRENT_TIMESTAMP,
-                   location = COALESCE($4, location),
-                   status = 'present'
-               WHERE id = $5
+                   status = 'attended'
+               WHERE id = $4
                RETURNING *`,
               [
                 photoUrl,
                 latitude,
                 longitude,
-                attendanceLocation,
                 existingAttendance.rows[0].id,
               ]
             );
@@ -345,14 +333,13 @@ router.post(
             // Create new record
             result = await query(
               `INSERT INTO attendance_logs 
-               (student_id, event_id, status, location, proof_photo_url, latitude, longitude, photo_taken_at, scanned_qr_data, device_info)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, $8, $9)
+               (student_id, event_id, status, proof_photo_url, latitude, longitude, photo_taken_at, qr_data, device_info)
+               VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, $7, $8)
                RETURNING *`,
               [
                 studentId,
                 eventId,
-                "present",
-                attendanceLocation,
+                "attended",
                 photoUrl,
                 latitude,
                 longitude,
@@ -415,7 +402,6 @@ router.post(
           longitude: attendanceLog.longitude,
           photoTakenAt: attendanceLog.photo_taken_at,
           status: attendanceLog.status,
-          location: attendanceLog.location,
         },
       });
     } catch (error) {
@@ -552,7 +538,6 @@ router.post(
         longitude,
         attendanceLogId,
         qrData,
-        location,
         deviceInfo,
       } = req.body;
 
@@ -598,16 +583,15 @@ router.post(
         // Create new attendance log with photo
         const insertResult = await query(
           `INSERT INTO attendance_logs 
-           (event_id, student_id, status, qr_data, location, device_info, 
+           (event_id, student_id, status, qr_data, device_info, 
             proof_photo_url, latitude, longitude, photo_taken_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
            RETURNING *`,
           [
             eventId,
             studentId,
-            "present",
+            "attended",
             qrData || null,
-            location || null,
             deviceInfo ? JSON.stringify(deviceInfo) : null,
             photoUrl,
             latitude,
