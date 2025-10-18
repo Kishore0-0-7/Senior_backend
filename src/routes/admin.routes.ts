@@ -62,10 +62,10 @@ router.post(
 
         // Create admin profile
         const adminResult = await query(
-          `INSERT INTO admins (user_id, name, email) 
-           VALUES ($1, $2, $3) 
+          `INSERT INTO admins (user_id, name) 
+           VALUES ($1, $2) 
            RETURNING *`,
-          [userId, name, email]
+          [userId, name]
         );
 
         await query("COMMIT");
@@ -88,12 +88,11 @@ router.post(
             user: {
               id: userId,
               email: email,
-              role: "admin",
+              role: 'admin',
             },
             admin: {
               id: adminResult.rows[0].id,
               name: adminResult.rows[0].name,
-              email: adminResult.rows[0].email,
             },
             token,
           },
