@@ -301,6 +301,18 @@ router.post(
         timestamp: new Date().toISOString(),
       });
 
+      // Get admin ID from user ID
+      const adminResult = await query(
+        "SELECT id FROM admins WHERE user_id = $1",
+        [req.user?.id]
+      );
+
+      if (adminResult.rows.length === 0) {
+        throw new AppError("Admin profile not found", 404);
+      }
+
+      const adminId = adminResult.rows[0].id;
+
       const result = await query(
         `INSERT INTO events (
         id, name, description, event_date, event_time, 
@@ -317,7 +329,7 @@ router.post(
           category,
           qrData,
           maxParticipants,
-          req.user?.id,
+          adminId,
         ]
       );
 
