@@ -88,7 +88,7 @@ router.post(
             user: {
               id: userId,
               email: email,
-              role: 'admin',
+              role: "admin",
             },
             admin: {
               id: adminResult.rows[0].id,
