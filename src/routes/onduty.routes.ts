@@ -485,6 +485,18 @@ router.put(
         throw new AppError("On-duty request not found", 404);
       }
 
+      // Get admin record from user_id
+      const adminRecord = await query(
+        "SELECT id FROM admins WHERE user_id = $1",
+        [adminId]
+      );
+
+      if (adminRecord.rows.length === 0) {
+        throw new AppError("Admin record not found", 404);
+      }
+
+      const actualAdminId = adminRecord.rows[0].id;
+
       // Update request status
       const result = await query(
         `UPDATE on_duty_requests 
@@ -494,7 +506,7 @@ router.put(
             updated_at = CURRENT_TIMESTAMP
         WHERE id = $4
         RETURNING *`,
-        [status, adminId, rejectionReason || null, id]
+        [status, actualAdminId, rejectionReason || null, id]
       );
 
       res.json({
