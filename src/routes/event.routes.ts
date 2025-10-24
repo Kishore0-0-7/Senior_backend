@@ -253,6 +253,17 @@ router.get(
 
       const result = await query(queryText, params);
 
+      console.log('=== EVENTS API RESPONSE ===');
+      console.log('Total events:', result.rows.length);
+      if (result.rows.length > 0) {
+        result.rows.forEach((event, index) => {
+          console.log(`Event ${index + 1}: ${event.name}`);
+          console.log(`  event_date: ${event.event_date}`);
+          console.log(`  event_time: ${event.event_time}`);
+        });
+      }
+      console.log('===========================');
+
       res.json({
         success: true,
         data: result.rows,
