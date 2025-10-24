@@ -94,6 +94,13 @@ router.post(
 
         const student = studentResult.rows[0];
 
+        // Load the full profile so clients immediately receive all details
+        const profileResult = await query(
+          "SELECT * FROM v_student_profiles WHERE id = $1",
+          [student.id]
+        );
+        const studentProfile = profileResult.rows[0] || student;
+
         // Generate JWT token
         const jwtSecret = process.env.JWT_SECRET || "fallback_secret_key";
         const expiresIn = process.env.JWT_EXPIRES_IN || "7d";
@@ -125,7 +132,12 @@ router.post(
               registration_number: student.registration_number,
               phone: student.phone,
               phone_number: student.phone,
+              college: student.college,
+              address: student.address,
+              date_of_birth: student.date_of_birth,
+              profile_photo_url: student.profile_photo_url,
             },
+            profile: studentProfile,
             token,
           },
         });
