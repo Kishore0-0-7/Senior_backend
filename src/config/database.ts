@@ -8,6 +8,11 @@ dotenv.config();
 // PostgreSQL DATE type ID is 1082
 types.setTypeParser(1082, (val: string) => val);
 
+// Configure pg to return TIME columns as plain strings (HH:MM:SS) instead of Date objects
+// This prevents timezone conversion issues
+// PostgreSQL TIME type ID is 1083
+types.setTypeParser(1083, (val: string) => val);
+
 const pool = new Pool({
   host: process.env.DB_HOST || "localhost",
   port: parseInt(process.env.DB_PORT || "5432"),
