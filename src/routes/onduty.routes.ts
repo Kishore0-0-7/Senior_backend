@@ -257,7 +257,7 @@ router.post(
   uploadOnDutySelfie.single("selfie"),
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      const studentId = req.user?.id;
+      const userId = req.user?.id;
       const { onDutyRequestId, latitude, longitude, address, qrData } =
         req.body;
 
@@ -268,6 +268,18 @@ router.post(
           400
         );
       }
+
+      // First get the student record ID from user_id
+      const studentCheck = await query(
+        `SELECT id FROM students WHERE user_id = $1`,
+        [userId]
+      );
+
+      if (studentCheck.rows.length === 0) {
+        throw new AppError("Student record not found", 404);
+      }
+
+      const studentId = studentCheck.rows[0].id;
 
       // Verify the on-duty request exists and is approved
       const odRequest = await query(
