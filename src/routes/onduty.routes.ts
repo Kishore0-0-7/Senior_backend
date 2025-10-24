@@ -568,6 +568,7 @@ router.get(
           s.name as student_name,
           s.email as student_email,
           s.registration_number,
+          s.department,
           odr.college_name,
           odr.start_date as od_start_date,
           odr.end_date as od_end_date
