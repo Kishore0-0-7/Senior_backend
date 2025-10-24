@@ -36,16 +36,37 @@ router.post(
         throw new AppError("All fields are required", 400);
       }
 
-      // Validate student exists in students table
-      const studentCheck = await query(
+      // Validate student exists in students table, create if missing
+      let studentCheck = await query(
         `SELECT id, name, status FROM students WHERE user_id = $1`,
         [studentId]
       );
 
+      // Auto-create student record if missing
       if (studentCheck.rows.length === 0) {
-        throw new AppError(
-          "Student profile not found. Please complete your profile setup or contact administrator.",
-          404
+        const userInfo = await query(
+          `SELECT email FROM users WHERE id = $1`,
+          [studentId]
+        );
+
+        if (userInfo.rows.length === 0) {
+          throw new AppError("User not found", 404);
+        }
+
+        const email = userInfo.rows[0].email;
+        const regNumber = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit random number
+
+        // Create student record
+        await query(
+          `INSERT INTO students (user_id, name, email, phone, college, department, year, registration_number, status)
+           VALUES ($1, $2, $3, '', 'Default', 'CS', '1st', $4, 'approved')`,
+          [studentId, email.split('@')[0], email, regNumber]
+        );
+
+        // Re-fetch student record
+        studentCheck = await query(
+          `SELECT id, name, status FROM students WHERE user_id = $1`,
+          [studentId]
         );
       }
 
