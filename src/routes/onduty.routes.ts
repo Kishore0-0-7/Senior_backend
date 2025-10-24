@@ -36,12 +36,49 @@ router.post(
         throw new AppError("All fields are required", 400);
       }
 
+      // Validate student exists in students table
+      const studentCheck = await query(
+        `SELECT id, name, status FROM students WHERE user_id = $1`,
+        [studentId]
+      );
+
+      if (studentCheck.rows.length === 0) {
+        throw new AppError(
+          "Student profile not found. Please complete your profile setup or contact administrator.",
+          404
+        );
+      }
+
+      const student = studentCheck.rows[0];
+
+      // Check if student is approved
+      if (student.status !== "approved") {
+        throw new AppError(
+          `Your student profile is ${student.status}. Only approved students can submit on-duty requests.`,
+          403
+        );
+      }
+
       // Validate dates
       const start = new Date(`${startDate}T${startTime}`);
       const end = new Date(`${endDate}T${endTime}`);
+      const now = new Date();
+
+      // Check if dates are in the past
+      if (start < now) {
+        throw new AppError("Start date/time cannot be in the past", 400);
+      }
 
       if (end <= start) {
         throw new AppError("End date/time must be after start date/time", 400);
+      }
+
+      // Check if request is too far in the future (e.g., more than 1 year)
+      const oneYearFromNow = new Date();
+      oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+      
+      if (start > oneYearFromNow) {
+        throw new AppError("On-duty requests cannot be more than one year in advance", 400);
       }
 
       // Get document URL if file was uploaded
@@ -50,14 +87,14 @@ router.post(
         documentUrl = `/uploads/onduty-documents/${req.file.filename}`;
       }
 
-      // Insert on-duty request
+      // Insert on-duty request (use student.id from students table, not user_id)
       const result = await query(
         `INSERT INTO on_duty_requests 
         (student_id, college_name, start_date, start_time, end_date, end_time, reason, document_url, status)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
         RETURNING *`,
         [
-          studentId,
+          student.id,  // Use student ID from students table
           collegeName,
           startDate,
           startTime,
