@@ -17,6 +17,7 @@ import eventRoutes from "./routes/event.routes";
 import attendanceRoutes from "./routes/attendance.routes";
 import certificateRoutes from "./routes/certificate.routes";
 import analyticsRoutes from "./routes/analytics.routes";
+import onDutyRoutes from "./routes/onduty.routes";
 
 // Load environment variables
 dotenv.config();
@@ -38,6 +39,8 @@ const computeUploadsRoot = () => {
 const uploadsRoot = computeUploadsRoot();
 const certificatesRoot = path.join(uploadsRoot, "certificates");
 const attendancePhotosRoot = path.join(uploadsRoot, "attendance-photos");
+const onDutyDocumentsRoot = path.join(uploadsRoot, "onduty-documents");
+const onDutySelfiesRoot = path.join(uploadsRoot, "onduty-selfies");
 
 const ensureDirectory = (dirPath: string) => {
   if (!fs.existsSync(dirPath)) {
@@ -48,6 +51,8 @@ const ensureDirectory = (dirPath: string) => {
 ensureDirectory(uploadsRoot);
 ensureDirectory(certificatesRoot);
 ensureDirectory(attendancePhotosRoot);
+ensureDirectory(onDutyDocumentsRoot);
+ensureDirectory(onDutySelfiesRoot);
 
 // Middleware
 app.use(helmet()); // Security headers
@@ -115,6 +120,7 @@ app.use(`${API_PREFIX}/events`, eventRoutes);
 app.use(`${API_PREFIX}/attendance`, attendanceRoutes);
 app.use(`${API_PREFIX}/certificates`, certificateRoutes);
 app.use(`${API_PREFIX}/analytics`, analyticsRoutes);
+app.use(`${API_PREFIX}/onduty`, onDutyRoutes);
 
 // Error handling
 app.use(notFoundHandler);
