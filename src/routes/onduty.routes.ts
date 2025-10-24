@@ -152,7 +152,23 @@ router.get(
   authorize("student"),
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      const studentId = req.user?.id;
+      const userId = req.user?.id;
+
+      // First get the student record
+      const studentCheck = await query(
+        `SELECT id FROM students WHERE user_id = $1`,
+        [userId]
+      );
+
+      if (studentCheck.rows.length === 0) {
+        res.json({
+          success: true,
+          data: [],
+        });
+        return;
+      }
+
+      const studentId = studentCheck.rows[0].id;
 
       const result = await query(
         `SELECT 
@@ -186,8 +202,24 @@ router.get(
   authorize("student"),
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      const studentId = req.user?.id;
+      const userId = req.user?.id;
       const today = new Date().toISOString().split("T")[0];
+
+      // First get the student record
+      const studentCheck = await query(
+        `SELECT id FROM students WHERE user_id = $1`,
+        [userId]
+      );
+
+      if (studentCheck.rows.length === 0) {
+        res.json({
+          success: true,
+          data: [],
+        });
+        return;
+      }
+
+      const studentId = studentCheck.rows[0].id;
 
       const result = await query(
         `SELECT 
