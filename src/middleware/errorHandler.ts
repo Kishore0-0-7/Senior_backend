@@ -34,16 +34,18 @@ export const errorHandler = (
   if ((err as any).code === "23503") {
     statusCode = 400;
     const constraint = (err as any).constraint || "";
-    
+
     // Provide user-friendly messages for specific constraints
     if (constraint.includes("student_id")) {
-      message = "Student profile not found. Please complete your profile setup or contact administrator.";
+      message =
+        "Student profile not found. Please complete your profile setup or contact administrator.";
     } else if (constraint.includes("event_id")) {
       message = "Event not found. The event may have been deleted.";
     } else if (constraint.includes("admin_id")) {
       message = "Administrator not found.";
     } else {
-      message = "Invalid reference in request. Please check your data and try again.";
+      message =
+        "Invalid reference in request. Please check your data and try again.";
     }
   }
 
@@ -51,7 +53,7 @@ export const errorHandler = (
   if ((err as any).code === "23505") {
     statusCode = 409;
     const detail = (err as any).detail || "";
-    
+
     if (detail.includes("email")) {
       message = "Email address already exists.";
     } else if (detail.includes("registration_number")) {
@@ -87,7 +89,7 @@ export const errorHandler = (
     success: false,
     error: {
       message,
-      ...(process.env.NODE_ENV === "development" && { 
+      ...(process.env.NODE_ENV === "development" && {
         stack: err.stack,
         code: (err as any).code,
         constraint: (err as any).constraint,

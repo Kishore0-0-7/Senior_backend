@@ -76,9 +76,12 @@ router.post(
       // Check if request is too far in the future (e.g., more than 1 year)
       const oneYearFromNow = new Date();
       oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
-      
+
       if (start > oneYearFromNow) {
-        throw new AppError("On-duty requests cannot be more than one year in advance", 400);
+        throw new AppError(
+          "On-duty requests cannot be more than one year in advance",
+          400
+        );
       }
 
       // Get document URL if file was uploaded
@@ -94,7 +97,7 @@ router.post(
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
         RETURNING *`,
         [
-          student.id,  // Use student ID from students table
+          student.id, // Use student ID from students table
           collegeName,
           startDate,
           startTime,
