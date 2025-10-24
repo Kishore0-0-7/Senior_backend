@@ -16,12 +16,14 @@ Or connect to your database and run the SQL file manually.
 All backend changes are complete! No additional npm packages needed.
 
 **Created Files:**
+
 - ✅ `backend/src/routes/onduty.routes.ts` - API routes
 - ✅ `database/add_onduty_tables.sql` - Database schema
 - ✅ `backend/ONDUTY_API_DOCUMENTATION.md` - API docs
 - ✅ `backend/ONDUTY_BACKEND_CHANGES.md` - Change summary
 
 **Modified Files:**
+
 - ✅ `backend/src/config/upload.ts` - Added OD file upload configs
 - ✅ `backend/src/server.ts` - Registered OD routes
 
@@ -33,6 +35,7 @@ npm run dev
 ```
 
 The server will:
+
 - Create `uploads/onduty-documents/` directory
 - Create `uploads/onduty-selfies/` directory
 - Register routes at `/api/onduty/*`
@@ -40,11 +43,13 @@ The server will:
 ## 4. Test API Endpoints
 
 ### Health Check
+
 ```bash
 curl http://localhost:3000/health
 ```
 
 ### Test Student OD Request (requires auth token)
+
 ```bash
 # Replace YOUR_STUDENT_TOKEN with actual token
 curl -X GET "http://localhost:3000/api/onduty/my-requests" \
@@ -52,6 +57,7 @@ curl -X GET "http://localhost:3000/api/onduty/my-requests" \
 ```
 
 ### Test Admin OD Requests (requires auth token)
+
 ```bash
 # Replace YOUR_ADMIN_TOKEN with actual token
 curl -X GET "http://localhost:3000/api/onduty/admin/requests" \
@@ -61,6 +67,7 @@ curl -X GET "http://localhost:3000/api/onduty/admin/requests" \
 ## 5. API Endpoints Summary
 
 **Student Routes (`/api/onduty/`):**
+
 - POST `/request` - Create OD request
 - GET `/my-requests` - Get my requests
 - GET `/approved` - Get approved requests (today)
@@ -69,6 +76,7 @@ curl -X GET "http://localhost:3000/api/onduty/admin/requests" \
 - DELETE `/request/:id` - Delete pending request
 
 **Admin Routes (`/api/onduty/admin/`):**
+
 - GET `/requests` - Get all requests (with filters)
 - PUT `/requests/:id` - Approve/reject request
 - GET `/attendance` - Get all attendance records
@@ -81,31 +89,31 @@ Update `StudentApp/src/services/api.ts` to add API calls:
 // Add this to your existing api.ts file
 export const onDutyAPI = {
   createRequest: async (requestData: FormData) => {
-    const response = await api.post('/onduty/request', requestData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    const response = await api.post("/onduty/request", requestData, {
+      headers: { "Content-Type": "multipart/form-data" },
     });
     return response.data;
   },
 
   getMyRequests: async () => {
-    const response = await api.get('/onduty/my-requests');
+    const response = await api.get("/onduty/my-requests");
     return response.data;
   },
 
   getApprovedRequests: async () => {
-    const response = await api.get('/onduty/approved');
+    const response = await api.get("/onduty/approved");
     return response.data;
   },
 
   markAttendance: async (attendanceData: FormData) => {
-    const response = await api.post('/onduty/attendance', attendanceData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    const response = await api.post("/onduty/attendance", attendanceData, {
+      headers: { "Content-Type": "multipart/form-data" },
     });
     return response.data;
   },
 
   getAttendanceHistory: async () => {
-    const response = await api.get('/onduty/attendance-history');
+    const response = await api.get("/onduty/attendance-history");
     return response.data;
   },
 
@@ -119,18 +127,23 @@ export const onDutyAPI = {
 ## 7. Troubleshooting
 
 ### Issue: Database tables not created
+
 **Solution:** Check PostgreSQL connection and run the SQL file manually
 
 ### Issue: Upload directory errors
+
 **Solution:** Ensure the backend has write permissions to the `uploads/` directory
 
 ### Issue: File upload fails
+
 **Solution:** Check file size (documents: 10MB, selfies: 5MB) and file type
 
 ### Issue: 401 Unauthorized errors
+
 **Solution:** Ensure JWT token is valid and included in Authorization header
 
 ### Issue: Cannot mark attendance twice
+
 **Solution:** This is by design - attendance can only be marked once per day per OD request
 
 ## 8. What's Next?

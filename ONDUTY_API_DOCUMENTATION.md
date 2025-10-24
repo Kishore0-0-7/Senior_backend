@@ -52,8 +52,8 @@ document: file (optional) - Supporting document (PDF, images, DOC/DOCX, max 10MB
   "success": true,
   "message": "On-duty request submitted successfully",
   "data": {
-    "id": 1,
-    "student_id": 5,
+    "id": "a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1",
+    "student_id": "c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1",
     "college_name": "ABC College",
     "start_date": "2025-10-25",
     "start_time": "09:00:00",
@@ -84,8 +84,8 @@ Retrieve all on-duty requests submitted by the current student.
   "success": true,
   "data": [
     {
-      "id": 1,
-      "student_id": 5,
+      "id": "a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1",
+      "student_id": "c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1",
       "college_name": "ABC College",
       "start_date": "2025-10-25",
       "start_time": "09:00:00",
@@ -94,7 +94,7 @@ Retrieve all on-duty requests submitted by the current student.
       "reason": "Tech fest participation",
       "document_url": "/uploads/onduty-documents/abc123.pdf",
       "status": "approved",
-      "approved_by": 1,
+      "approved_by": "b1b1b1b1-b1b1-b1b1-b1b1-b1b1b1b1b1b1",
       "approved_by_name": "Admin Name",
       "rejection_reason": null,
       "created_at": "2025-10-24T10:30:00.000Z",
@@ -121,7 +121,7 @@ Get only approved OD requests that are valid for today.
   "success": true,
   "data": [
     {
-      "id": 1,
+      "id": "a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1",
       "college_name": "ABC College",
       "start_date": "2025-10-24",
       "end_date": "2025-10-26",
@@ -148,7 +148,7 @@ Mark attendance for an approved on-duty request with GPS location and selfie.
 **Form Fields:**
 
 ```
-onDutyRequestId: number (required) - ID of the approved OD request
+onDutyRequestId: string (required) - UUID of the approved OD request
 latitude: number (required) - GPS latitude
 longitude: number (required) - GPS longitude
 address: string (optional) - Reverse geocoded address
@@ -163,15 +163,15 @@ selfie: file (optional) - Selfie photo (images only, max 5MB)
   "success": true,
   "message": "On-duty attendance marked successfully",
   "data": {
-    "id": 1,
-    "on_duty_request_id": 1,
-    "student_id": 5,
+    "id": "d1d1d1d1-d1d1-d1d1-d1d1-d1d1d1d1d1d1",
+    "on_duty_request_id": "a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1",
+    "student_id": "c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1",
     "check_in_time": "2025-10-25T09:30:00.000Z",
     "latitude": 13.0827,
     "longitude": 80.2707,
     "address": "123 Main St, Chennai",
     "selfie_photo_url": "/uploads/onduty-selfies/xyz789.jpg",
-    "qr_data": "{\"type\":\"ON_DUTY_ATTENDANCE\",\"studentId\":5}",
+    "qr_data": "{\"type\":\"ON_DUTY_ATTENDANCE\",\"studentId\":\"c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1\"}",
     "created_at": "2025-10-25T09:30:00.000Z"
   }
 }
@@ -200,9 +200,9 @@ Retrieve attendance history for all on-duty requests.
   "success": true,
   "data": [
     {
-      "id": 1,
-      "on_duty_request_id": 1,
-      "student_id": 5,
+      "id": "d1d1d1d1-d1d1-d1d1-d1d1-d1d1d1d1d1d1",
+      "on_duty_request_id": "a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1",
+      "student_id": "c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1",
       "check_in_time": "2025-10-25T09:30:00.000Z",
       "latitude": 13.0827,
       "longitude": 80.2707,
