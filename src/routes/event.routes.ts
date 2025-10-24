@@ -253,8 +253,8 @@ router.get(
 
       const result = await query(queryText, params);
 
-      console.log('=== EVENTS API RESPONSE ===');
-      console.log('Total events:', result.rows.length);
+      console.log("=== EVENTS API RESPONSE ===");
+      console.log("Total events:", result.rows.length);
       if (result.rows.length > 0) {
         result.rows.forEach((event, index) => {
           console.log(`Event ${index + 1}: ${event.name}`);
@@ -262,7 +262,7 @@ router.get(
           console.log(`  event_time: ${event.event_time}`);
         });
       }
-      console.log('===========================');
+      console.log("===========================");
 
       res.json({
         success: true,
