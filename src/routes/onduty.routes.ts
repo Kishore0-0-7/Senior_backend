@@ -361,7 +361,24 @@ router.get(
   authorize("student"),
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      const studentId = req.user?.id;
+      const userId = req.user?.id;
+
+      // Resolve students.id from users.id
+      const studentCheck = await query(
+        `SELECT id FROM students WHERE user_id = $1`,
+        [userId]
+      );
+
+      if (studentCheck.rows.length === 0) {
+        // No student record yet - return empty history
+        res.json({
+          success: true,
+          data: [],
+        });
+        return;
+      }
+
+      const studentId = studentCheck.rows[0].id;
 
       const result = await query(
         `SELECT 
