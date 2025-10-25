@@ -781,7 +781,19 @@ router.delete(
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const studentId = req.user?.id;
+      const userId = req.user?.id;
+
+      // Get student_id from user_id
+      const studentRecord = await query(
+        "SELECT id FROM students WHERE user_id = $1",
+        [userId]
+      );
+
+      if (studentRecord.rows.length === 0) {
+        throw new AppError("Student record not found", 404);
+      }
+
+      const studentId = studentRecord.rows[0].id;
 
       // Check if request exists and belongs to student
       const existingRequest = await query(
