@@ -613,6 +613,150 @@ router.get(
 );
 
 /**
+ * @route   PUT /api/onduty/request/:id
+ * @desc    Update an on-duty request (Student only, only if pending)
+ * @access  Private (Student)
+ */
+router.put(
+  "/request/:id",
+  authenticate,
+  authorize("student"),
+  uploadOnDutyDocument.single("document"),
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user?.id;
+      const { collegeName, startDate, startTime, endDate, endTime, reason } =
+        req.body;
+
+      // Get student_id from user_id
+      const studentRecord = await query(
+        "SELECT id FROM students WHERE user_id = $1",
+        [userId]
+      );
+
+      if (studentRecord.rows.length === 0) {
+        throw new AppError("Student record not found", 404);
+      }
+
+      const studentId = studentRecord.rows[0].id;
+
+      // Check if request exists and belongs to student
+      const existingRequest = await query(
+        "SELECT * FROM on_duty_requests WHERE id = $1 AND student_id = $2",
+        [id, studentId]
+      );
+
+      if (existingRequest.rows.length === 0) {
+        throw new AppError("On-duty request not found", 404);
+      }
+
+      const request = existingRequest.rows[0];
+
+      // Only allow editing of pending requests
+      if (request.status !== "pending") {
+        throw new AppError(
+          "Cannot edit an on-duty request that has been processed",
+          400
+        );
+      }
+
+      // Validate dates if provided
+      if (startDate && endDate) {
+        const start = new Date(`${startDate}T${startTime || request.start_time}`);
+        const end = new Date(`${endDate}T${endTime || request.end_time}`);
+        const now = new Date();
+
+        if (start < now) {
+          throw new AppError("Start date/time cannot be in the past", 400);
+        }
+
+        if (end <= start) {
+          throw new AppError("End date/time must be after start date/time", 400);
+        }
+      }
+
+      // Handle document upload
+      let documentUrl = request.document_url;
+      if (req.file) {
+        // Delete old document if exists
+        if (request.document_url) {
+          const oldFilePath = path.join(__dirname, "../../", request.document_url);
+          if (fs.existsSync(oldFilePath)) {
+            fs.unlinkSync(oldFilePath);
+          }
+        }
+        documentUrl = `/uploads/onduty/${req.file.filename}`;
+      }
+
+      // Build update query dynamically based on provided fields
+      const updates: string[] = [];
+      const values: any[] = [];
+      let paramCounter = 1;
+
+      if (collegeName !== undefined) {
+        updates.push(`college_name = $${paramCounter++}`);
+        values.push(collegeName);
+      }
+      if (startDate !== undefined) {
+        updates.push(`start_date = $${paramCounter++}`);
+        values.push(startDate);
+      }
+      if (startTime !== undefined) {
+        updates.push(`start_time = $${paramCounter++}`);
+        values.push(startTime);
+      }
+      if (endDate !== undefined) {
+        updates.push(`end_date = $${paramCounter++}`);
+        values.push(endDate);
+      }
+      if (endTime !== undefined) {
+        updates.push(`end_time = $${paramCounter++}`);
+        values.push(endTime);
+      }
+      if (reason !== undefined) {
+        updates.push(`reason = $${paramCounter++}`);
+        values.push(reason);
+      }
+      if (req.file) {
+        updates.push(`document_url = $${paramCounter++}`);
+        values.push(documentUrl);
+      }
+
+      // Add updated_at
+      updates.push(`updated_at = CURRENT_TIMESTAMP`);
+
+      // Add id to values array for WHERE clause
+      values.push(id);
+
+      const updateQuery = `
+        UPDATE on_duty_requests 
+        SET ${updates.join(", ")}
+        WHERE id = $${paramCounter}
+        RETURNING *
+      `;
+
+      const result = await query(updateQuery, values);
+
+      res.json({
+        success: true,
+        message: "On-duty request updated successfully",
+        data: result.rows[0],
+      });
+    } catch (error) {
+      // Clean up uploaded file if there's an error
+      if (req.file) {
+        const filePath = path.join(__dirname, "../../uploads/onduty", req.file.filename);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+      next(error);
+    }
+  }
+);
+
+/**
  * @route   DELETE /api/onduty/request/:id
  * @desc    Delete an on-duty request (Student only, only if pending)
  * @access  Private (Student)
