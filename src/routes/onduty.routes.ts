@@ -663,7 +663,9 @@ router.put(
 
       // Validate dates if provided
       if (startDate && endDate) {
-        const start = new Date(`${startDate}T${startTime || request.start_time}`);
+        const start = new Date(
+          `${startDate}T${startTime || request.start_time}`
+        );
         const end = new Date(`${endDate}T${endTime || request.end_time}`);
         const now = new Date();
 
@@ -672,7 +674,10 @@ router.put(
         }
 
         if (end <= start) {
-          throw new AppError("End date/time must be after start date/time", 400);
+          throw new AppError(
+            "End date/time must be after start date/time",
+            400
+          );
         }
       }
 
@@ -681,7 +686,11 @@ router.put(
       if (req.file) {
         // Delete old document if exists
         if (request.document_url) {
-          const oldFilePath = path.join(__dirname, "../../", request.document_url);
+          const oldFilePath = path.join(
+            __dirname,
+            "../../",
+            request.document_url
+          );
           if (fs.existsSync(oldFilePath)) {
             fs.unlinkSync(oldFilePath);
           }
@@ -746,7 +755,11 @@ router.put(
     } catch (error) {
       // Clean up uploaded file if there's an error
       if (req.file) {
-        const filePath = path.join(__dirname, "../../uploads/onduty", req.file.filename);
+        const filePath = path.join(
+          __dirname,
+          "../../uploads/onduty",
+          req.file.filename
+        );
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
         }
