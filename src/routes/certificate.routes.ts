@@ -171,7 +171,11 @@ router.post(
         throw new AppError("Please upload a file", 400);
       }
 
-      const { title, certificate_type } = req.body;
+      const { title, category, certificate_type, description, event_id } = req.body;
+
+      if (!title || !title.trim()) {
+        throw new AppError("Certificate title is required", 400);
+      }
 
       // Get student ID and email from user
       const studentResult = await query(
@@ -191,17 +195,23 @@ router.post(
       const folderName = getStudentEmailFolder(email);
       const fileUrl = buildCertificateUrl(folderName, req.file.filename);
 
+      // Use category if provided, otherwise use certificate_type
+      const certType = category || certificate_type || null;
+
       const result = await query(
         `INSERT INTO certificates (
-        student_id, title, certificate_type, file_name, file_url, status
-      ) VALUES ($1, $2, $3, $4, $5, 'Pending')
+        student_id, event_id, title, certificate_type, file_name, file_url, 
+        remarks, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'Pending')
       RETURNING *`,
         [
           studentId,
-          title,
-          certificate_type || null,
+          event_id || null,
+          title.trim(),
+          certType,
           req.file.originalname,
           fileUrl,
+          description || null,
         ]
       );
 
