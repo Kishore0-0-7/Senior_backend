@@ -510,14 +510,14 @@ router.put(
       const { id } = req.params;
       const userId = req.user?.id;
       const userRole = req.user?.role;
-      const { 
-        title, 
-        category, 
-        certificate_type, 
-        description, 
-        event_id, 
-        status, 
-        remarks 
+      const {
+        title,
+        category,
+        certificate_type,
+        description,
+        event_id,
+        status,
+        remarks,
       } = req.body;
 
       const certResult = await query(
@@ -556,12 +556,14 @@ router.put(
       }
 
       const isAdminUpdatingStatus = userRole === "admin" && status;
-      
+
       // Use category if provided, otherwise fall back to certificate_type
       const certType = category || certificate_type || null;
-      
+
       // Use description if provided, otherwise use remarks
-      const finalRemarks = description || (userRole === "admin" ? remarks ?? null : existingCert.remarks);
+      const finalRemarks =
+        description ||
+        (userRole === "admin" ? remarks ?? null : existingCert.remarks);
 
       const result = await query(
         `UPDATE certificates SET
