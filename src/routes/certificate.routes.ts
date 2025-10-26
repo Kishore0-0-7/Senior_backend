@@ -171,7 +171,8 @@ router.post(
         throw new AppError("Please upload a file", 400);
       }
 
-      const { title, category, certificate_type, description, event_id } = req.body;
+      const { title, category, certificate_type, description, event_id } =
+        req.body;
 
       if (!title || !title.trim()) {
         throw new AppError("Certificate title is required", 400);
@@ -509,7 +510,15 @@ router.put(
       const { id } = req.params;
       const userId = req.user?.id;
       const userRole = req.user?.role;
-      const { title, certificate_type, status, remarks } = req.body;
+      const { 
+        title, 
+        category, 
+        certificate_type, 
+        description, 
+        event_id, 
+        status, 
+        remarks 
+      } = req.body;
 
       const certResult = await query(
         `SELECT c.*, s.user_id as owner_user_id, u.email as owner_email
@@ -547,25 +556,33 @@ router.put(
       }
 
       const isAdminUpdatingStatus = userRole === "admin" && status;
+      
+      // Use category if provided, otherwise fall back to certificate_type
+      const certType = category || certificate_type || null;
+      
+      // Use description if provided, otherwise use remarks
+      const finalRemarks = description || (userRole === "admin" ? remarks ?? null : existingCert.remarks);
 
       const result = await query(
         `UPDATE certificates SET
           title = COALESCE($1, title),
           certificate_type = COALESCE($2, certificate_type),
-          file_name = $3,
-          file_url = $4,
-          status = COALESCE($5, status),
-          remarks = COALESCE($6, remarks),
+          event_id = COALESCE($3, event_id),
+          file_name = $4,
+          file_url = $5,
+          status = COALESCE($6, status),
+          remarks = COALESCE($7, remarks),
           updated_at = NOW()
-        WHERE id = $7
+        WHERE id = $8
         RETURNING *`,
         [
-          title,
-          certificate_type,
+          title || null,
+          certType,
+          event_id || null,
           originalFileName,
           fileUrl,
           isAdminUpdatingStatus ? status : null,
-          userRole === "admin" ? remarks ?? null : existingCert.remarks,
+          finalRemarks,
           id,
         ]
       );
