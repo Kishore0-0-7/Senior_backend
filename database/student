@@ -1,0 +1,1391 @@
+--
+-- PostgreSQL database dump
+--
+
+\restrict vAHBdHW5OXtUIBVgV31rl15PDANbrS0IAvRAd0O4GneMTbRZWFeGtuYLGwLlXfT
+
+-- Dumped from database version 16.10 (Ubuntu 16.10-0ubuntu0.24.04.1)
+-- Dumped by pg_dump version 16.10 (Ubuntu 16.10-0ubuntu0.24.04.1)
+
+-- Started on 2025-10-24 15:09:38 IST
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- TOC entry 229 (class 1255 OID 16580)
+-- Name: cleanup_old_attendance_logs(integer); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.cleanup_old_attendance_logs(days_to_keep integer DEFAULT 365) RETURNS integer
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    deleted_count INTEGER;
+BEGIN
+    DELETE FROM attendance_logs
+    WHERE timestamp < CURRENT_TIMESTAMP - (days_to_keep || ' days')::INTERVAL;
+    
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RETURN deleted_count;
+END;
+$$;
+
+
+ALTER FUNCTION public.cleanup_old_attendance_logs(days_to_keep integer) OWNER TO postgres;
+
+--
+-- TOC entry 227 (class 1255 OID 16578)
+-- Name: get_student_attendance_stats(uuid); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.get_student_attendance_stats(student_uuid uuid) RETURNS TABLE(total_events_registered bigint, total_events_attended bigint, attendance_percentage numeric)
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        COUNT(DISTINCT ep.event_id)::BIGINT as total_events_registered,
+        COUNT(DISTINCT al.event_id)::BIGINT as total_events_attended,
+        CASE 
+            WHEN COUNT(DISTINCT ep.event_id) > 0 
+            THEN (COUNT(DISTINCT al.event_id)::DECIMAL / COUNT(DISTINCT ep.event_id)::DECIMAL * 100)
+            ELSE 0 
+        END as attendance_percentage
+    FROM event_participants ep
+    LEFT JOIN attendance_logs al ON ep.event_id = al.event_id AND ep.student_id = al.student_id
+    WHERE ep.student_id = student_uuid;
+END;
+$$;
+
+
+ALTER FUNCTION public.get_student_attendance_stats(student_uuid uuid) OWNER TO postgres;
+
+--
+-- TOC entry 228 (class 1255 OID 16579)
+-- Name: is_within_grace_period(uuid); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.is_within_grace_period(event_uuid uuid) RETURNS boolean
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    event_datetime TIMESTAMP;
+    grace_minutes INTEGER;
+    current_time TIMESTAMP := CURRENT_TIMESTAMP;
+BEGIN
+    SELECT 
+        (e.event_date::TEXT || ' ' || e.event_time::TEXT)::TIMESTAMP,
+        COALESCE(e.grace_period_minutes, 15)
+    INTO event_datetime, grace_minutes
+    FROM events e
+    WHERE e.id = event_uuid;
+    
+    IF event_datetime IS NULL THEN
+        RETURN FALSE;
+    END IF;
+    
+    RETURN current_time <= (event_datetime + (grace_minutes || ' minutes')::INTERVAL);
+END;
+$$;
+
+
+ALTER FUNCTION public.is_within_grace_period(event_uuid uuid) OWNER TO postgres;
+
+--
+-- TOC entry 226 (class 1255 OID 16570)
+-- Name: update_updated_at_column(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.update_updated_at_column() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.update_updated_at_column() OWNER TO postgres;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- TOC entry 216 (class 1259 OID 16405)
+-- Name: admins; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.admins (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    name character varying(255) NOT NULL,
+    phone character varying(20),
+    department character varying(100),
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.admins OWNER TO postgres;
+
+--
+-- TOC entry 3584 (class 0 OID 0)
+-- Dependencies: 216
+-- Name: TABLE admins; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.admins IS 'Admin-specific information and profile data';
+
+
+--
+-- TOC entry 220 (class 1259 OID 16499)
+-- Name: attendance_logs; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.attendance_logs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    student_id uuid NOT NULL,
+    event_id uuid NOT NULL,
+    "timestamp" timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    location_latitude numeric(10,8),
+    location_longitude numeric(11,8),
+    device_info jsonb,
+    qr_data text,
+    status character varying(20) DEFAULT 'attended'::character varying,
+    notes text,
+    proof_photo_url text,
+    latitude numeric(10,8),
+    longitude numeric(11,8),
+    photo_taken_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT attendance_logs_status_check CHECK (((status)::text = ANY ((ARRAY['attended'::character varying, 'late'::character varying, 'verified'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.attendance_logs OWNER TO postgres;
+
+--
+-- TOC entry 3585 (class 0 OID 0)
+-- Dependencies: 220
+-- Name: TABLE attendance_logs; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.attendance_logs IS 'Detailed attendance logs with photo proof and GPS location tracking';
+
+
+--
+-- TOC entry 3586 (class 0 OID 0)
+-- Dependencies: 220
+-- Name: COLUMN attendance_logs.proof_photo_url; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.attendance_logs.proof_photo_url IS 'Path to the uploaded attendance proof photo';
+
+
+--
+-- TOC entry 3587 (class 0 OID 0)
+-- Dependencies: 220
+-- Name: COLUMN attendance_logs.latitude; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.attendance_logs.latitude IS 'GPS latitude coordinate where attendance was marked';
+
+
+--
+-- TOC entry 3588 (class 0 OID 0)
+-- Dependencies: 220
+-- Name: COLUMN attendance_logs.longitude; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.attendance_logs.longitude IS 'GPS longitude coordinate where attendance was marked';
+
+
+--
+-- TOC entry 3589 (class 0 OID 0)
+-- Dependencies: 220
+-- Name: COLUMN attendance_logs.photo_taken_at; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.attendance_logs.photo_taken_at IS 'Timestamp when the proof photo was taken';
+
+
+--
+-- TOC entry 221 (class 1259 OID 16528)
+-- Name: certificates; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.certificates (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    student_id uuid NOT NULL,
+    event_id uuid,
+    title character varying(255) NOT NULL,
+    file_name character varying(255) NOT NULL,
+    file_url text NOT NULL,
+    certificate_type character varying(50),
+    status character varying(20) DEFAULT 'Pending'::character varying,
+    remarks text,
+    uploaded_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    approved_at timestamp without time zone,
+    approved_by uuid,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT certificates_status_check CHECK (((status)::text = ANY ((ARRAY['Pending'::character varying, 'Approved'::character varying, 'Rejected'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.certificates OWNER TO postgres;
+
+--
+-- TOC entry 3590 (class 0 OID 0)
+-- Dependencies: 221
+-- Name: TABLE certificates; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.certificates IS 'Student certificates with approval workflow';
+
+
+--
+-- TOC entry 219 (class 1259 OID 16471)
+-- Name: event_participants; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.event_participants (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    event_id uuid NOT NULL,
+    student_id uuid NOT NULL,
+    status character varying(20) DEFAULT 'registered'::character varying,
+    check_in_time timestamp without time zone,
+    notes text,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT event_participants_status_check CHECK (((status)::text = ANY ((ARRAY['registered'::character varying, 'attended'::character varying, 'late'::character varying, 'absent'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.event_participants OWNER TO postgres;
+
+--
+-- TOC entry 3591 (class 0 OID 0)
+-- Dependencies: 219
+-- Name: TABLE event_participants; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.event_participants IS 'Tracks student registration and attendance status for events';
+
+
+--
+-- TOC entry 218 (class 1259 OID 16449)
+-- Name: events; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.events (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying(255) NOT NULL,
+    description text,
+    event_date date NOT NULL,
+    event_time time without time zone NOT NULL,
+    venue character varying(255) NOT NULL,
+    category character varying(100),
+    status character varying(20) DEFAULT 'Active'::character varying,
+    qr_data text NOT NULL,
+    max_participants integer,
+    grace_period_minutes integer DEFAULT 15,
+    created_by uuid,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT events_status_check CHECK (((status)::text = ANY ((ARRAY['Active'::character varying, 'Completed'::character varying, 'Cancelled'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.events OWNER TO postgres;
+
+--
+-- TOC entry 3592 (class 0 OID 0)
+-- Dependencies: 218
+-- Name: TABLE events; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.events IS 'Event information with QR codes and attendance settings';
+
+
+--
+-- TOC entry 225 (class 1259 OID 16697)
+-- Name: on_duty_attendance; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.on_duty_attendance (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    on_duty_request_id uuid NOT NULL,
+    student_id uuid NOT NULL,
+    check_in_time timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    latitude numeric(10,8) NOT NULL,
+    longitude numeric(11,8) NOT NULL,
+    address text,
+    selfie_photo_url character varying(500),
+    qr_data text,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.on_duty_attendance OWNER TO postgres;
+
+--
+-- TOC entry 3593 (class 0 OID 0)
+-- Dependencies: 225
+-- Name: TABLE on_duty_attendance; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.on_duty_attendance IS 'Stores attendance records for approved on-duty requests';
+
+
+--
+-- TOC entry 3594 (class 0 OID 0)
+-- Dependencies: 225
+-- Name: COLUMN on_duty_attendance.latitude; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.on_duty_attendance.latitude IS 'GPS latitude where attendance was marked';
+
+
+--
+-- TOC entry 3595 (class 0 OID 0)
+-- Dependencies: 225
+-- Name: COLUMN on_duty_attendance.longitude; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.on_duty_attendance.longitude IS 'GPS longitude where attendance was marked';
+
+
+--
+-- TOC entry 3596 (class 0 OID 0)
+-- Dependencies: 225
+-- Name: COLUMN on_duty_attendance.address; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.on_duty_attendance.address IS 'Reverse geocoded address from GPS coordinates';
+
+
+--
+-- TOC entry 3597 (class 0 OID 0)
+-- Dependencies: 225
+-- Name: COLUMN on_duty_attendance.selfie_photo_url; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.on_duty_attendance.selfie_photo_url IS 'URL path to the selfie photo taken during attendance';
+
+
+--
+-- TOC entry 3598 (class 0 OID 0)
+-- Dependencies: 225
+-- Name: COLUMN on_duty_attendance.qr_data; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.on_duty_attendance.qr_data IS 'QR code data scanned during attendance marking';
+
+
+--
+-- TOC entry 224 (class 1259 OID 16675)
+-- Name: on_duty_requests; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.on_duty_requests (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    student_id uuid NOT NULL,
+    college_name character varying(255) NOT NULL,
+    start_date date NOT NULL,
+    start_time time without time zone NOT NULL,
+    end_date date NOT NULL,
+    end_time time without time zone NOT NULL,
+    reason text NOT NULL,
+    document_url character varying(500),
+    status character varying(20) DEFAULT 'pending'::character varying NOT NULL,
+    approved_by uuid,
+    rejection_reason text,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT on_duty_requests_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.on_duty_requests OWNER TO postgres;
+
+--
+-- TOC entry 3599 (class 0 OID 0)
+-- Dependencies: 224
+-- Name: TABLE on_duty_requests; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.on_duty_requests IS 'Stores on-duty requests submitted by students';
+
+
+--
+-- TOC entry 3600 (class 0 OID 0)
+-- Dependencies: 224
+-- Name: COLUMN on_duty_requests.college_name; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.on_duty_requests.college_name IS 'Name of the external college/institution';
+
+
+--
+-- TOC entry 3601 (class 0 OID 0)
+-- Dependencies: 224
+-- Name: COLUMN on_duty_requests.document_url; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.on_duty_requests.document_url IS 'URL path to the uploaded supporting document';
+
+
+--
+-- TOC entry 3602 (class 0 OID 0)
+-- Dependencies: 224
+-- Name: COLUMN on_duty_requests.status; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.on_duty_requests.status IS 'Request status: pending, approved, or rejected';
+
+
+--
+-- TOC entry 3603 (class 0 OID 0)
+-- Dependencies: 224
+-- Name: COLUMN on_duty_requests.approved_by; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.on_duty_requests.approved_by IS 'Admin ID who approved/rejected the request';
+
+
+--
+-- TOC entry 3604 (class 0 OID 0)
+-- Dependencies: 224
+-- Name: COLUMN on_duty_requests.rejection_reason; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.on_duty_requests.rejection_reason IS 'Reason for rejection (if rejected)';
+
+
+--
+-- TOC entry 217 (class 1259 OID 16421)
+-- Name: students; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.students (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    name character varying(255) NOT NULL,
+    email character varying(255) NOT NULL,
+    phone character varying(20) NOT NULL,
+    college character varying(255) NOT NULL,
+    department character varying(100) NOT NULL,
+    year character varying(10) NOT NULL,
+    registration_number character varying(50) NOT NULL,
+    address text,
+    date_of_birth date,
+    profile_photo_url text,
+    status character varying(20) DEFAULT 'pending'::character varying,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT students_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.students OWNER TO postgres;
+
+--
+-- TOC entry 3605 (class 0 OID 0)
+-- Dependencies: 217
+-- Name: TABLE students; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.students IS 'Student information including registration and profile details';
+
+
+--
+-- TOC entry 215 (class 1259 OID 16390)
+-- Name: users; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.users (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    email character varying(255) NOT NULL,
+    password_hash character varying(255) NOT NULL,
+    role character varying(20) NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    is_active boolean DEFAULT true NOT NULL,
+    last_login timestamp without time zone,
+    CONSTRAINT users_role_check CHECK (((role)::text = ANY ((ARRAY['admin'::character varying, 'student'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.users OWNER TO postgres;
+
+--
+-- TOC entry 3606 (class 0 OID 0)
+-- Dependencies: 215
+-- Name: TABLE users; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.users IS 'Base authentication table for all users (admin and students)';
+
+
+--
+-- TOC entry 223 (class 1259 OID 16565)
+-- Name: v_event_statistics; Type: VIEW; Schema: public; Owner: postgres
+--
+
+CREATE VIEW public.v_event_statistics AS
+ SELECT e.id,
+    e.name,
+    e.description,
+    e.event_date,
+    e.event_time,
+    e.venue,
+    e.category,
+    e.status,
+    e.qr_data,
+    e.max_participants,
+    e.grace_period_minutes,
+    e.created_by,
+    e.created_at,
+    e.updated_at,
+    count(DISTINCT ep.student_id) AS total_participants,
+    count(DISTINCT
+        CASE
+            WHEN ((ep.status)::text = 'attended'::text) THEN ep.student_id
+            ELSE NULL::uuid
+        END) AS attended_count,
+    count(DISTINCT
+        CASE
+            WHEN ((ep.status)::text = 'late'::text) THEN ep.student_id
+            ELSE NULL::uuid
+        END) AS late_count,
+    count(DISTINCT
+        CASE
+            WHEN ((ep.status)::text = 'absent'::text) THEN ep.student_id
+            ELSE NULL::uuid
+        END) AS absent_count,
+    count(DISTINCT
+        CASE
+            WHEN ((ep.status)::text = 'registered'::text) THEN ep.student_id
+            ELSE NULL::uuid
+        END) AS registered_count,
+    count(DISTINCT al.student_id) AS check_ins_count,
+    count(DISTINCT
+        CASE
+            WHEN (al.proof_photo_url IS NOT NULL) THEN al.student_id
+            ELSE NULL::uuid
+        END) AS photos_uploaded,
+    count(DISTINCT
+        CASE
+            WHEN ((al.latitude IS NOT NULL) AND (al.longitude IS NOT NULL)) THEN al.student_id
+            ELSE NULL::uuid
+        END) AS gps_locations
+   FROM ((public.events e
+     LEFT JOIN public.event_participants ep ON ((e.id = ep.event_id)))
+     LEFT JOIN public.attendance_logs al ON ((e.id = al.event_id)))
+  GROUP BY e.id, e.name, e.description, e.event_date, e.event_time, e.venue, e.category, e.status, e.qr_data, e.max_participants, e.grace_period_minutes, e.created_by, e.created_at, e.updated_at;
+
+
+ALTER VIEW public.v_event_statistics OWNER TO postgres;
+
+--
+-- TOC entry 3607 (class 0 OID 0)
+-- Dependencies: 223
+-- Name: VIEW v_event_statistics; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON VIEW public.v_event_statistics IS 'Event statistics including attendance and photo/location tracking';
+
+
+--
+-- TOC entry 222 (class 1259 OID 16560)
+-- Name: v_student_profiles; Type: VIEW; Schema: public; Owner: postgres
+--
+
+CREATE VIEW public.v_student_profiles AS
+ SELECT s.id,
+    s.user_id,
+    s.name,
+    s.email,
+    s.phone,
+    s.college,
+    s.department,
+    s.year,
+    s.registration_number,
+    s.address,
+    s.date_of_birth,
+    s.profile_photo_url,
+    s.status,
+    s.created_at,
+    s.updated_at,
+    u.role,
+    count(DISTINCT ep.event_id) AS events_registered,
+    count(DISTINCT al.event_id) AS events_attended,
+    count(DISTINCT c.id) AS certificates_count
+   FROM ((((public.students s
+     LEFT JOIN public.users u ON ((s.user_id = u.id)))
+     LEFT JOIN public.event_participants ep ON ((s.id = ep.student_id)))
+     LEFT JOIN public.attendance_logs al ON ((s.id = al.student_id)))
+     LEFT JOIN public.certificates c ON ((s.id = c.student_id)))
+  GROUP BY s.id, s.user_id, s.name, s.email, s.phone, s.college, s.department, s.year, s.registration_number, s.address, s.date_of_birth, s.profile_photo_url, s.status, s.created_at, s.updated_at, u.role;
+
+
+ALTER VIEW public.v_student_profiles OWNER TO postgres;
+
+--
+-- TOC entry 3608 (class 0 OID 0)
+-- Dependencies: 222
+-- Name: VIEW v_student_profiles; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON VIEW public.v_student_profiles IS 'Comprehensive student view with aggregated statistics';
+
+
+--
+-- TOC entry 3571 (class 0 OID 16405)
+-- Dependencies: 216
+-- Data for Name: admins; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.admins (id, user_id, name, phone, department, created_at, updated_at) FROM stdin;
+b1b1b1b1-b1b1-b1b1-b1b1-b1b1b1b1b1b1	a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1	Admin User	1234567890	IT	2025-10-18 15:01:04.229299	2025-10-18 15:01:04.229299
+9f1d1b67-4cd3-4150-91e0-95dfd1685043	43f4e260-5ad1-4128-8e86-7e33182973b1	admin	\N	\N	2025-10-18 15:24:21.30769	2025-10-18 15:24:21.30769
+\.
+
+
+--
+-- TOC entry 3575 (class 0 OID 16499)
+-- Dependencies: 220
+-- Data for Name: attendance_logs; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.attendance_logs (id, student_id, event_id, "timestamp", location_latitude, location_longitude, device_info, qr_data, status, notes, proof_photo_url, latitude, longitude, photo_taken_at, created_at, updated_at) FROM stdin;
+b60c9c08-e9e0-4076-9d9c-5dc22b3125f8	551cff3f-06db-4cf3-8b34-7f51c4fae1e5	ddddbc10-f82e-4859-92ad-91a3fe191dc0	2025-10-22 06:24:42.583899	\N	\N	{"os": "android"}	{"eventId":"ddddbc10-f82e-4859-92ad-91a3fe191dc0","type":"event_attendance","name":"Paper presentation","venue":"Muthur","timestamp":"2025-10-22T06:21:26.342Z"}	attended	\N	/uploads/attendance-photos/ddddbc10-f82e-4859-92ad-91a3fe191dc0_551cff3f-06db-4cf3-8b34-7f51c4fae1e5_1761114282581_3686591e.jpg	11.09892680	77.73680300	2025-10-22 06:24:42.583899	2025-10-22 06:24:42.583899	2025-10-22 06:24:42.583899
+0116e8e4-3f55-41d5-a6e6-64780eeee26a	1c3cb0c6-943d-446e-b504-68f8fd393016	917d9d88-a8c7-441e-abda-9eae31740f04	2025-10-22 10:33:19.225183	\N	\N	{"os": "android"}	{"eventId":"917d9d88-a8c7-441e-abda-9eae31740f04","type":"event_attendance","name":"New","venue":"Block 3 cc3","timestamp":"2025-10-22T10:31:37.389Z"}	attended	\N	/uploads/attendance-photos/917d9d88-a8c7-441e-abda-9eae31740f04_1c3cb0c6-943d-446e-b504-68f8fd393016_1761129199221_588f89d2.jpg	11.28559000	77.62174167	2025-10-22 10:33:19.225183	2025-10-22 10:33:19.225183	2025-10-22 10:33:19.225183
+\.
+
+
+--
+-- TOC entry 3576 (class 0 OID 16528)
+-- Dependencies: 221
+-- Data for Name: certificates; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.certificates (id, student_id, event_id, title, file_name, file_url, certificate_type, status, remarks, uploaded_at, approved_at, approved_by, created_at, updated_at) FROM stdin;
+b306ff18-7b8c-4005-b969-be7f1e70b040	551cff3f-06db-4cf3-8b34-7f51c4fae1e5	\N	Certificate	IMG_20251021_215848.jpg	/uploads/certificates/22it042_at_gmail_com/cert-1761113876744-493764478.jpg	\N	Approved	\N	2025-10-22 06:18:02.745043	\N	\N	2025-10-22 06:18:02.745043	2025-10-22 10:36:39.13933
+\.
+
+
+--
+-- TOC entry 3574 (class 0 OID 16471)
+-- Dependencies: 219
+-- Data for Name: event_participants; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.event_participants (id, event_id, student_id, status, check_in_time, notes, created_at, updated_at) FROM stdin;
+5c13bd96-766e-46e7-8dc9-87c4cbc99245	ddddbc10-f82e-4859-92ad-91a3fe191dc0	551cff3f-06db-4cf3-8b34-7f51c4fae1e5	attended	2025-10-22 06:24:42.662092	Photo proof uploaded	2025-10-22 06:22:42.343649	2025-10-22 06:24:42.662092
+436a6267-892e-4d09-b762-4cd162f6674a	917d9d88-a8c7-441e-abda-9eae31740f04	1c3cb0c6-943d-446e-b504-68f8fd393016	attended	2025-10-22 10:33:19.231122	Photo proof uploaded	2025-10-22 10:33:19.231122	2025-10-22 10:33:19.231122
+\.
+
+
+--
+-- TOC entry 3573 (class 0 OID 16449)
+-- Dependencies: 218
+-- Data for Name: events; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.events (id, name, description, event_date, event_time, venue, category, status, qr_data, max_participants, grace_period_minutes, created_by, created_at, updated_at) FROM stdin;
+ddddbc10-f82e-4859-92ad-91a3fe191dc0	Paper presentation	Departments: Information Technology\nQR policy: Single-use\nGrace window: 10 minutes	2025-10-22	06:55:00	Muthur	Event	Completed	{"eventId":"ddddbc10-f82e-4859-92ad-91a3fe191dc0","type":"event_attendance","name":"Paper presentation","venue":"Muthur","timestamp":"2025-10-22T06:21:26.342Z"}	\N	15	9f1d1b67-4cd3-4150-91e0-95dfd1685043	2025-10-22 06:21:26.343635	2025-10-22 10:29:31.709835
+917d9d88-a8c7-441e-abda-9eae31740f04	New	Nil\n\nDepartments: Information Technology, Computer Science Engineering, Electronics & Communication Engineering, Electrical & Electronics Engineering, Mechanical Engineering, Civil Engineering\nQR policy: Multi-use\nGrace window: 15 minutes	2025-10-24	01:15:00	Block 3 cc3	Seminar	Active	{"eventId":"917d9d88-a8c7-441e-abda-9eae31740f04","type":"event_attendance","name":"New","venue":"Block 3 cc3","timestamp":"2025-10-22T10:31:37.389Z"}	\N	15	9f1d1b67-4cd3-4150-91e0-95dfd1685043	2025-10-22 10:31:37.399037	2025-10-22 10:37:34.861965
+\.
+
+
+--
+-- TOC entry 3578 (class 0 OID 16697)
+-- Dependencies: 225
+-- Data for Name: on_duty_attendance; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.on_duty_attendance (id, on_duty_request_id, student_id, check_in_time, latitude, longitude, address, selfie_photo_url, qr_data, created_at) FROM stdin;
+\.
+
+
+--
+-- TOC entry 3577 (class 0 OID 16675)
+-- Dependencies: 224
+-- Data for Name: on_duty_requests; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.on_duty_requests (id, student_id, college_name, start_date, start_time, end_date, end_time, reason, document_url, status, approved_by, rejection_reason, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- TOC entry 3572 (class 0 OID 16421)
+-- Dependencies: 217
+-- Data for Name: students; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.students (id, user_id, name, email, phone, college, department, year, registration_number, address, date_of_birth, profile_photo_url, status, created_at, updated_at) FROM stdin;
+551cff3f-06db-4cf3-8b34-7f51c4fae1e5	b7dd2bd8-b265-4d2f-8002-a65949d9bbc2	SANJAI	22it042@gmail.com	9344317974	Nandha Engineering College	Information Technology	4th	22it042	Erode	2025-10-22	\N	approved	2025-10-22 05:58:44.105641	2025-10-22 06:04:24.502379
+8d99064f-1177-47b1-a747-f25b83555ac3	47ada54e-f9b7-4c34-bc57-180538e37f27	John doe	john@gmail.com	1234567890	College 	Computer Science	2nd	565342	Erode	1983-10-25	file:///data/user/0/com.studentapp/cache/rn_image_picker_lib_temp_05ccb212-5fd9-419e-ac14-4769a576cded.jpg	approved	2025-10-22 10:22:37.297331	2025-10-22 10:28:14.296269
+1c3cb0c6-943d-446e-b504-68f8fd393016	c8203dae-238f-469c-adb1-1e4040eb0b96	Kishore 	mrmks46007@gmail.com	9361070035	Nec	Information Technology	3rd	23IT032	Erode	2005-11-18	http://43.204.143.235:3000/uploads/profile-photos/1d9a95e1-aa9c-47b4-8dd2-06ed26dd194b.jpg	approved	2025-10-22 10:28:44.807558	2025-10-22 10:32:00.848592
+\.
+
+
+--
+-- TOC entry 3570 (class 0 OID 16390)
+-- Dependencies: 215
+-- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.users (id, email, password_hash, role, created_at, updated_at, is_active, last_login) FROM stdin;
+a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1	admin@example.com	$2b$10$XYZ...	admin	2025-10-18 15:01:04.229299	2025-10-18 15:01:04.229299	t	\N
+b7dd2bd8-b265-4d2f-8002-a65949d9bbc2	22it042@gmail.com	$2b$10$F/kREDK4UaSQWoqTE.IcKunHdFYyxcTFWaEYpreXb0Wit9prs9ZC6	student	2025-10-22 05:58:44.105641	2025-10-22 05:58:44.105641	t	\N
+47ada54e-f9b7-4c34-bc57-180538e37f27	john@gmail.com	$2b$10$z24VHuQObyNEWlPqFt3QUu2Cddpt5YBGx.E8eau0os2oJF5DpdLsu	student	2025-10-22 10:22:37.297331	2025-10-22 10:22:37.297331	t	\N
+43f4e260-5ad1-4128-8e86-7e33182973b1	admin@gmail.com	$2b$10$P1GAHNulejTR56WAUMJjAuibexdpRNWLKDquFAPwnySpkdikj3atO	admin	2025-10-18 15:24:21.30769	2025-10-22 10:22:59.92877	t	2025-10-22 10:22:59.92877
+c8203dae-238f-469c-adb1-1e4040eb0b96	mrmks46007@gmail.com	$2b$10$jaiZ.WjYpjzfl5L6w/3A0.IDTT5OtT.2kl5ELJr/boQDu8rGRxuoq	student	2025-10-22 10:28:44.807558	2025-10-22 10:28:44.807558	t	\N
+\.
+
+
+--
+-- TOC entry 3345 (class 2606 OID 16412)
+-- Name: admins admins_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.admins
+    ADD CONSTRAINT admins_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3347 (class 2606 OID 16414)
+-- Name: admins admins_user_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.admins
+    ADD CONSTRAINT admins_user_id_key UNIQUE (user_id);
+
+
+--
+-- TOC entry 3378 (class 2606 OID 16511)
+-- Name: attendance_logs attendance_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.attendance_logs
+    ADD CONSTRAINT attendance_logs_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3387 (class 2606 OID 16540)
+-- Name: certificates certificates_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.certificates
+    ADD CONSTRAINT certificates_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3369 (class 2606 OID 16484)
+-- Name: event_participants event_participants_event_id_student_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.event_participants
+    ADD CONSTRAINT event_participants_event_id_student_id_key UNIQUE (event_id, student_id);
+
+
+--
+-- TOC entry 3371 (class 2606 OID 16482)
+-- Name: event_participants event_participants_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.event_participants
+    ADD CONSTRAINT event_participants_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3363 (class 2606 OID 16461)
+-- Name: events events_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.events
+    ADD CONSTRAINT events_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3402 (class 2606 OID 16706)
+-- Name: on_duty_attendance on_duty_attendance_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.on_duty_attendance
+    ADD CONSTRAINT on_duty_attendance_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3397 (class 2606 OID 16686)
+-- Name: on_duty_requests on_duty_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.on_duty_requests
+    ADD CONSTRAINT on_duty_requests_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3355 (class 2606 OID 16436)
+-- Name: students students_email_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.students
+    ADD CONSTRAINT students_email_key UNIQUE (email);
+
+
+--
+-- TOC entry 3357 (class 2606 OID 16432)
+-- Name: students students_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.students
+    ADD CONSTRAINT students_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3359 (class 2606 OID 16438)
+-- Name: students students_registration_number_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.students
+    ADD CONSTRAINT students_registration_number_key UNIQUE (registration_number);
+
+
+--
+-- TOC entry 3361 (class 2606 OID 16434)
+-- Name: students students_user_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.students
+    ADD CONSTRAINT students_user_id_key UNIQUE (user_id);
+
+
+--
+-- TOC entry 3341 (class 2606 OID 16402)
+-- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_email_key UNIQUE (email);
+
+
+--
+-- TOC entry 3343 (class 2606 OID 16400)
+-- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3348 (class 1259 OID 16420)
+-- Name: idx_admins_user_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_admins_user_id ON public.admins USING btree (user_id);
+
+
+--
+-- TOC entry 3379 (class 1259 OID 16523)
+-- Name: idx_attendance_event_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_attendance_event_id ON public.attendance_logs USING btree (event_id);
+
+
+--
+-- TOC entry 3380 (class 1259 OID 16526)
+-- Name: idx_attendance_location; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_attendance_location ON public.attendance_logs USING btree (latitude, longitude);
+
+
+--
+-- TOC entry 3381 (class 1259 OID 16581)
+-- Name: idx_attendance_photo_location; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_attendance_photo_location ON public.attendance_logs USING btree (event_id, student_id, proof_photo_url, latitude, longitude);
+
+
+--
+-- TOC entry 3382 (class 1259 OID 16525)
+-- Name: idx_attendance_status; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_attendance_status ON public.attendance_logs USING btree (status);
+
+
+--
+-- TOC entry 3383 (class 1259 OID 16527)
+-- Name: idx_attendance_student_event; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_attendance_student_event ON public.attendance_logs USING btree (student_id, event_id);
+
+
+--
+-- TOC entry 3384 (class 1259 OID 16522)
+-- Name: idx_attendance_student_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_attendance_student_id ON public.attendance_logs USING btree (student_id);
+
+
+--
+-- TOC entry 3385 (class 1259 OID 16524)
+-- Name: idx_attendance_timestamp; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_attendance_timestamp ON public.attendance_logs USING btree ("timestamp");
+
+
+--
+-- TOC entry 3388 (class 1259 OID 16557)
+-- Name: idx_certificates_event_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_certificates_event_id ON public.certificates USING btree (event_id);
+
+
+--
+-- TOC entry 3389 (class 1259 OID 16558)
+-- Name: idx_certificates_status; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_certificates_status ON public.certificates USING btree (status);
+
+
+--
+-- TOC entry 3390 (class 1259 OID 16556)
+-- Name: idx_certificates_student_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_certificates_student_id ON public.certificates USING btree (student_id);
+
+
+--
+-- TOC entry 3391 (class 1259 OID 16582)
+-- Name: idx_certificates_student_status; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_certificates_student_status ON public.certificates USING btree (student_id, status);
+
+
+--
+-- TOC entry 3392 (class 1259 OID 16559)
+-- Name: idx_certificates_uploaded_at; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_certificates_uploaded_at ON public.certificates USING btree (uploaded_at);
+
+
+--
+-- TOC entry 3372 (class 1259 OID 16498)
+-- Name: idx_event_participants_check_in; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_event_participants_check_in ON public.event_participants USING btree (check_in_time);
+
+
+--
+-- TOC entry 3373 (class 1259 OID 16495)
+-- Name: idx_event_participants_event_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_event_participants_event_id ON public.event_participants USING btree (event_id);
+
+
+--
+-- TOC entry 3374 (class 1259 OID 16583)
+-- Name: idx_event_participants_event_status; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_event_participants_event_status ON public.event_participants USING btree (event_id, status);
+
+
+--
+-- TOC entry 3375 (class 1259 OID 16497)
+-- Name: idx_event_participants_status; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_event_participants_status ON public.event_participants USING btree (status);
+
+
+--
+-- TOC entry 3376 (class 1259 OID 16496)
+-- Name: idx_event_participants_student_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_event_participants_student_id ON public.event_participants USING btree (student_id);
+
+
+--
+-- TOC entry 3364 (class 1259 OID 16470)
+-- Name: idx_events_category; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_events_category ON public.events USING btree (category);
+
+
+--
+-- TOC entry 3365 (class 1259 OID 16469)
+-- Name: idx_events_created_by; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_events_created_by ON public.events USING btree (created_by);
+
+
+--
+-- TOC entry 3366 (class 1259 OID 16468)
+-- Name: idx_events_date; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_events_date ON public.events USING btree (event_date);
+
+
+--
+-- TOC entry 3367 (class 1259 OID 16467)
+-- Name: idx_events_status; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_events_status ON public.events USING btree (status);
+
+
+--
+-- TOC entry 3398 (class 1259 OID 16722)
+-- Name: idx_on_duty_attendance_check_in_time; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_on_duty_attendance_check_in_time ON public.on_duty_attendance USING btree (check_in_time);
+
+
+--
+-- TOC entry 3399 (class 1259 OID 16720)
+-- Name: idx_on_duty_attendance_request_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_on_duty_attendance_request_id ON public.on_duty_attendance USING btree (on_duty_request_id);
+
+
+--
+-- TOC entry 3400 (class 1259 OID 16721)
+-- Name: idx_on_duty_attendance_student_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_on_duty_attendance_student_id ON public.on_duty_attendance USING btree (student_id);
+
+
+--
+-- TOC entry 3393 (class 1259 OID 16719)
+-- Name: idx_on_duty_requests_dates; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_on_duty_requests_dates ON public.on_duty_requests USING btree (start_date, end_date);
+
+
+--
+-- TOC entry 3394 (class 1259 OID 16718)
+-- Name: idx_on_duty_requests_status; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_on_duty_requests_status ON public.on_duty_requests USING btree (status);
+
+
+--
+-- TOC entry 3395 (class 1259 OID 16717)
+-- Name: idx_on_duty_requests_student_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_on_duty_requests_student_id ON public.on_duty_requests USING btree (student_id);
+
+
+--
+-- TOC entry 3349 (class 1259 OID 16448)
+-- Name: idx_students_department; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_students_department ON public.students USING btree (department);
+
+
+--
+-- TOC entry 3350 (class 1259 OID 16445)
+-- Name: idx_students_email; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_students_email ON public.students USING btree (email);
+
+
+--
+-- TOC entry 3351 (class 1259 OID 16446)
+-- Name: idx_students_registration_number; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_students_registration_number ON public.students USING btree (registration_number);
+
+
+--
+-- TOC entry 3352 (class 1259 OID 16447)
+-- Name: idx_students_status; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_students_status ON public.students USING btree (status);
+
+
+--
+-- TOC entry 3353 (class 1259 OID 16444)
+-- Name: idx_students_user_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_students_user_id ON public.students USING btree (user_id);
+
+
+--
+-- TOC entry 3336 (class 1259 OID 16403)
+-- Name: idx_users_email; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_users_email ON public.users USING btree (email);
+
+
+--
+-- TOC entry 3337 (class 1259 OID 16585)
+-- Name: idx_users_is_active; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_users_is_active ON public.users USING btree (is_active);
+
+
+--
+-- TOC entry 3338 (class 1259 OID 16586)
+-- Name: idx_users_last_login; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_users_last_login ON public.users USING btree (last_login);
+
+
+--
+-- TOC entry 3339 (class 1259 OID 16404)
+-- Name: idx_users_role; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_users_role ON public.users USING btree (role);
+
+
+--
+-- TOC entry 3418 (class 2620 OID 16572)
+-- Name: admins update_admins_updated_at; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER update_admins_updated_at BEFORE UPDATE ON public.admins FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- TOC entry 3422 (class 2620 OID 16576)
+-- Name: attendance_logs update_attendance_logs_updated_at; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER update_attendance_logs_updated_at BEFORE UPDATE ON public.attendance_logs FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- TOC entry 3423 (class 2620 OID 16577)
+-- Name: certificates update_certificates_updated_at; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER update_certificates_updated_at BEFORE UPDATE ON public.certificates FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- TOC entry 3421 (class 2620 OID 16575)
+-- Name: event_participants update_event_participants_updated_at; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER update_event_participants_updated_at BEFORE UPDATE ON public.event_participants FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- TOC entry 3420 (class 2620 OID 16574)
+-- Name: events update_events_updated_at; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER update_events_updated_at BEFORE UPDATE ON public.events FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- TOC entry 3424 (class 2620 OID 16723)
+-- Name: on_duty_requests update_on_duty_requests_updated_at; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER update_on_duty_requests_updated_at BEFORE UPDATE ON public.on_duty_requests FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- TOC entry 3419 (class 2620 OID 16573)
+-- Name: students update_students_updated_at; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER update_students_updated_at BEFORE UPDATE ON public.students FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- TOC entry 3417 (class 2620 OID 16571)
+-- Name: users update_users_updated_at; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- TOC entry 3403 (class 2606 OID 16415)
+-- Name: admins admins_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.admins
+    ADD CONSTRAINT admins_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3408 (class 2606 OID 16517)
+-- Name: attendance_logs attendance_logs_event_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.attendance_logs
+    ADD CONSTRAINT attendance_logs_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3409 (class 2606 OID 16512)
+-- Name: attendance_logs attendance_logs_student_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.attendance_logs
+    ADD CONSTRAINT attendance_logs_student_id_fkey FOREIGN KEY (student_id) REFERENCES public.students(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3410 (class 2606 OID 16551)
+-- Name: certificates certificates_approved_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.certificates
+    ADD CONSTRAINT certificates_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.admins(id);
+
+
+--
+-- TOC entry 3411 (class 2606 OID 16546)
+-- Name: certificates certificates_event_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.certificates
+    ADD CONSTRAINT certificates_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id) ON DELETE SET NULL;
+
+
+--
+-- TOC entry 3412 (class 2606 OID 16541)
+-- Name: certificates certificates_student_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.certificates
+    ADD CONSTRAINT certificates_student_id_fkey FOREIGN KEY (student_id) REFERENCES public.students(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3406 (class 2606 OID 16485)
+-- Name: event_participants event_participants_event_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.event_participants
+    ADD CONSTRAINT event_participants_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3407 (class 2606 OID 16490)
+-- Name: event_participants event_participants_student_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.event_participants
+    ADD CONSTRAINT event_participants_student_id_fkey FOREIGN KEY (student_id) REFERENCES public.students(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3405 (class 2606 OID 16462)
+-- Name: events events_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.events
+    ADD CONSTRAINT events_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.admins(id);
+
+
+--
+-- TOC entry 3415 (class 2606 OID 16707)
+-- Name: on_duty_attendance on_duty_attendance_on_duty_request_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.on_duty_attendance
+    ADD CONSTRAINT on_duty_attendance_on_duty_request_id_fkey FOREIGN KEY (on_duty_request_id) REFERENCES public.on_duty_requests(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3416 (class 2606 OID 16712)
+-- Name: on_duty_attendance on_duty_attendance_student_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.on_duty_attendance
+    ADD CONSTRAINT on_duty_attendance_student_id_fkey FOREIGN KEY (student_id) REFERENCES public.students(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3413 (class 2606 OID 16692)
+-- Name: on_duty_requests on_duty_requests_approved_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.on_duty_requests
+    ADD CONSTRAINT on_duty_requests_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.admins(id) ON DELETE SET NULL;
+
+
+--
+-- TOC entry 3414 (class 2606 OID 16687)
+-- Name: on_duty_requests on_duty_requests_student_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.on_duty_requests
+    ADD CONSTRAINT on_duty_requests_student_id_fkey FOREIGN KEY (student_id) REFERENCES public.students(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3404 (class 2606 OID 16439)
+-- Name: students students_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.students
+    ADD CONSTRAINT students_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+-- Completed on 2025-10-24 15:09:49 IST
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict vAHBdHW5OXtUIBVgV31rl15PDANbrS0IAvRAd0O4GneMTbRZWFeGtuYLGwLlXfT
+
