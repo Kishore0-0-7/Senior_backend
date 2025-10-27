@@ -227,10 +227,14 @@ router.get(
           a.name as approved_by_name
         FROM on_duty_requests odr
         LEFT JOIN admins a ON odr.approved_by = a.id
+        LEFT JOIN on_duty_attendance oda ON oda.on_duty_request_id = odr.id 
+          AND oda.student_id = odr.student_id 
+          AND DATE(oda.check_in_time) = $2
         WHERE odr.student_id = $1 
           AND odr.status = 'approved'
           AND odr.start_date <= $2
           AND odr.end_date >= $2
+          AND oda.id IS NULL
         ORDER BY odr.start_date DESC`,
         [studentId, today]
       );
