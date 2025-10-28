@@ -57,6 +57,48 @@ router.get(
   }
 );
 
+// Get student metadata (counts)
+router.get(
+  "/meta",
+  authenticate,
+  authorize("admin"),
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const result = await query(
+        `
+        SELECT 
+          COUNT(*)::int AS total,
+          COUNT(CASE WHEN status = 'approved' THEN 1 END)::int AS approved,
+          COUNT(CASE WHEN status = 'pending' THEN 1 END)::int AS pending,
+          COUNT(CASE WHEN status = 'rejected' THEN 1 END)::int AS rejected
+        FROM students
+      `,
+        []
+      );
+
+      const row = result.rows[0] ?? {
+        total: 0,
+        approved: 0,
+        pending: 0,
+        rejected: 0,
+      };
+
+      res.json({
+        success: true,
+        data: {
+          total: Number(row.total) || 0,
+          approved: Number(row.approved) || 0,
+          pending: Number(row.pending) || 0,
+          rejected: Number(row.rejected) || 0,
+          fetchedAt: new Date().toISOString(),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // Get student by ID
 router.get(
   "/:id",
