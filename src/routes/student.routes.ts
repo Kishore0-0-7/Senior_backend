@@ -4,6 +4,7 @@ import { AppError } from "../middleware/errorHandler";
 import { authenticate, authorize, AuthRequest } from "../middleware/auth";
 import { uploadProfilePhoto } from "../config/upload";
 import { generateProfilePhotoUrl } from "../utils/urlHelper";
+import bcrypt from "bcrypt";
 
 const router = Router();
 
@@ -205,6 +206,7 @@ router.put(
         profilePhotoUrl,
         date_of_birth,
         dateOfBirth: camelDateOfBirth,
+        password,
       } = req.body;
 
       const normalizedDateOfBirth =
@@ -246,7 +248,31 @@ router.put(
       if (profilePhotoUrl !== undefined)
         appendField("profile_photo_url", profilePhotoUrl || null);
 
-      if (updateFields.length === 0) {
+      // Handle password update separately (in users table)
+      if (password) {
+        // Get the user_id associated with this student
+        const studentResult = await query(
+          "SELECT user_id FROM students WHERE id = $1",
+          [id]
+        );
+
+        if (studentResult.rows.length === 0) {
+          throw new AppError("Student not found", 404);
+        }
+
+        const userId = studentResult.rows[0].user_id;
+
+        // Hash the new password
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        // Update the password in users table
+        await query(
+          "UPDATE users SET password_hash = $1 WHERE id = $2",
+          [passwordHash, userId]
+        );
+      }
+
+      if (updateFields.length === 0 && !password) {
         const existing = await query(
           "SELECT * FROM v_student_profiles WHERE id = $1",
           [id]
@@ -263,20 +289,28 @@ router.put(
         return;
       }
 
-      const result = await query(
-        `UPDATE students SET ${updateFields.join(", ")}
-      WHERE id = $${values.length + 1}
-      RETURNING *`,
-        [...values, id]
-      );
+      if (updateFields.length > 0) {
+        const result = await query(
+          `UPDATE students SET ${updateFields.join(", ")}
+        WHERE id = $${values.length + 1}
+        RETURNING *`,
+          [...values, id]
+        );
 
-      if (result.rows.length === 0) {
-        throw new AppError("Student not found", 404);
+        if (result.rows.length === 0) {
+          throw new AppError("Student not found", 404);
+        }
       }
+
+      // Fetch updated student data
+      const updatedStudent = await query(
+        "SELECT * FROM v_student_profiles WHERE id = $1",
+        [id]
+      );
 
       res.json({
         success: true,
-        data: result.rows[0],
+        data: updatedStudent.rows[0],
       });
     } catch (error) {
       next(error);
