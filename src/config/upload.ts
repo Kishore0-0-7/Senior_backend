@@ -3,11 +3,19 @@ import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 
-// Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, "../../uploads");
+// Ensure uploads directory exists - use process.cwd() for consistent path
+// This ensures both dev and production use the same uploads directory
+const uploadsDir = path.resolve(
+  process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads")
+);
 const profilePhotosDir = path.join(uploadsDir, "profile-photos");
 const onDutyDocumentsDir = path.join(uploadsDir, "onduty-documents");
 const onDutySelfiesDir = path.join(uploadsDir, "onduty-selfies");
+
+console.log('📁 Upload directories configured:');
+console.log('   Root:', uploadsDir);
+console.log('   On-duty docs:', onDutyDocumentsDir);
+console.log('   On-duty selfies:', onDutySelfiesDir);
 
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -100,7 +108,11 @@ const documentFileFilter = (
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   ];
 
-  if (allowedMimeTypes.includes(file.mimetype)) {
+  // Also check file extension as fallback (some mobile apps send wrong MIME types)
+  const ext = path.extname(file.originalname).toLowerCase();
+  const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.doc', '.docx'];
+
+  if (allowedMimeTypes.includes(file.mimetype) || allowedExtensions.includes(ext)) {
     cb(null, true);
   } else {
     cb(
@@ -125,7 +137,7 @@ export const uploadOnDutyDocument = multer({
   storage: onDutyDocumentStorage,
   fileFilter: documentFileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB max file size for documents
+    fileSize: 50 * 1024 * 1024, // 50MB max file size for documents (increased for large PDFs)
   },
 });
 

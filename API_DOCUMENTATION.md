@@ -1342,6 +1342,74 @@ Status values: `Approved`, `Rejected`, `Pending`
 }
 ```
 
+**Error Responses**:
+- `400 Bad Request`: Missing required fields, invalid file type, or file too large (max 50MB)
+- `403 Forbidden`: Student profile not approved
+
+---
+
+### 1b. Create On-Duty Request (Base64 Upload - Alternative)
+
+**Endpoint**: `POST /api/onduty/request-base64`
+
+**Description**: Student creates an on-duty request with base64 document upload (Alternative method for mobile apps)
+
+**Authentication**: Required (Student)
+
+**Request**: `application/json`
+
+**Request Body**:
+```json
+{
+  "collegeName": "Engineering College",
+  "startDate": "2026-03-20",
+  "startTime": "09:00",
+  "endDate": "2026-03-22",
+  "endTime": "17:00",
+  "reason": "Attending technical workshop",
+  "documentBase64": "base64_encoded_file_content_here",
+  "documentType": "application/pdf",
+  "documentName": "workshop-invite.pdf"
+}
+```
+
+**Fields**:
+- `collegeName`: College name (required)
+- `startDate`: Start date in YYYY-MM-DD format (required)
+- `startTime`: Start time in HH:MM format (required)
+- `endDate`: End date in YYYY-MM-DD format (required)
+- `endTime`: End time in HH:MM format (required)
+- `reason`: Reason for on-duty (required)
+- `documentBase64`: Base64 encoded file content (optional)
+- `documentType`: MIME type - application/pdf, image/jpeg, or image/png (required if documentBase64 provided)
+- `documentName`: Original filename (optional)
+
+**Success Response** (201 Created):
+```json
+{
+  "success": true,
+  "message": "On-duty request submitted successfully",
+  "data": {
+    "id": 1,
+    "student_id": 5,
+    "college_name": "Engineering College",
+    "start_date": "2026-03-20",
+    "end_date": "2026-03-22",
+    "status": "pending",
+    "document_url": "https://backend.com/uploads/onduty-documents/doc123.pdf"
+  }
+}
+```
+
+**Error Responses**:
+- `400 Bad Request`: Missing required fields, invalid file type, or file too large (max 50MB)
+- `403 Forbidden`: Student profile not approved
+- `500 Server Error`: Failed to save document
+
+**Note**: This endpoint is particularly useful for mobile apps that have issues with multipart/form-data uploads.
+
+---
+
 ### 2. Get Student On-Duty Requests
 
 **Endpoint**: `GET /api/onduty/student/:studentId`

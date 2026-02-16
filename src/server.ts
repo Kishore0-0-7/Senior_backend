@@ -102,7 +102,66 @@ app.get(
   }
 );
 
-app.use("/uploads", express.static(uploadsRoot));
+// Serve static files for all upload types with detailed logging
+app.use("/uploads", (req, res, next) => {
+  const requestedPath = path.join(uploadsRoot, req.path);
+  console.log(`📁 Static file request: ${req.path}`);
+  console.log(`   Full path: ${requestedPath}`);
+  console.log(`   Exists: ${fs.existsSync(requestedPath)}`);
+  next();
+}, express.static(uploadsRoot));
+
+// Specific routes for different upload types (with better error handling)
+app.get('/uploads/onduty-documents/:filename', (req: Request, res: Response) => {
+  const filePath = path.join(onDutyDocumentsRoot, req.params.filename);
+  console.log(`📄 On-duty document request: ${req.params.filename}`);
+  console.log(`   Path: ${filePath}`);
+  
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    console.log(`   ❌ File not found`);
+    res.status(404).json({ 
+      success: false, 
+      error: 'File not found',
+      requestedFile: req.params.filename
+    });
+  }
+});
+
+app.get('/uploads/onduty-selfies/:filename', (req: Request, res: Response) => {
+  const filePath = path.join(onDutySelfiesRoot, req.params.filename);
+  console.log(`🤳 On-duty selfie request: ${req.params.filename}`);
+  console.log(`   Path: ${filePath}`);
+  
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    console.log(`   ❌ File not found`);
+    res.status(404).json({ 
+      success: false, 
+      error: 'File not found',
+      requestedFile: req.params.filename
+    });
+  }
+});
+
+app.get('/uploads/attendance-photos/:filename', (req: Request, res: Response) => {
+  const filePath = path.join(attendancePhotosRoot, req.params.filename);
+  console.log(`📸 Attendance photo request: ${req.params.filename}`);
+  console.log(`   Path: ${filePath}`);
+  
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    console.log(`   ❌ File not found`);
+    res.status(404).json({ 
+      success: false, 
+      error: 'File not found',
+      requestedFile: req.params.filename
+    });
+  }
+});
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -111,6 +170,40 @@ app.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   });
+});
+
+// Debug endpoint to check upload directories
+app.get("/api/debug/uploads", (req: Request, res: Response) => {
+  try {
+    const listFilesInDir = (dirPath: string) => {
+      if (!fs.existsSync(dirPath)) {
+        return { exists: false, files: [] };
+      }
+      const files = fs.readdirSync(dirPath);
+      return {
+        exists: true,
+        count: files.length,
+        files: files.slice(0, 10), // Only list first 10 files
+        hasMore: files.length > 10
+      };
+    };
+
+    res.json({
+      success: true,
+      uploadsRoot,
+      directories: {
+        certificates: listFilesInDir(certificatesRoot),
+        attendancePhotos: listFilesInDir(attendancePhotosRoot),
+        onDutyDocuments: listFilesInDir(onDutyDocumentsRoot),
+        onDutySelfies: listFilesInDir(onDutySelfiesRoot),
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
 });
 
 // Database connection test endpoint
@@ -184,10 +277,15 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 // Start server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 API available at http://localhost:${PORT}${API_PREFIX}`);
   console.log(`🏥 Health check at http://localhost:${PORT}/health`);
 });
+
+// Increase timeout for large file uploads (5 minutes)
+server.timeout = 300000;
+server.keepAliveTimeout = 300000;
+server.headersTimeout = 310000;
 
 export default app;

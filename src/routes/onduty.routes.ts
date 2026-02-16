@@ -2,10 +2,12 @@ import { Router, Response, NextFunction } from "express";
 import { query } from "../config/database";
 import { AppError } from "../middleware/errorHandler";
 import { authenticate, authorize, AuthRequest } from "../middleware/auth";
+import multer from "multer";
 import { uploadOnDutyDocument, uploadOnDutySelfie } from "../config/upload";
 import { generateOnDutyDocumentUrl, generateOnDutySelfieUrl } from "../utils/urlHelper";
 import path from "path";
 import fs from "fs";
+import { v4 as uuidv4 } from "uuid";
 
 const router = Router();
 
@@ -18,7 +20,20 @@ router.post(
   "/request",
   authenticate,
   authorize("student"),
-  uploadOnDutyDocument.single("document"),
+  (req: AuthRequest, res: Response, next: NextFunction) => {
+    uploadOnDutyDocument.single("document")(req, res, (err: any) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === 'LIMIT_FILE_SIZE') {
+            return next(new AppError('File size exceeds 50MB limit', 400));
+          }
+          return next(new AppError(`Upload error: ${err.message}`, 400));
+        }
+        return next(new AppError(err.message || 'File upload failed', 400));
+      }
+      next();
+    });
+  },
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const studentId = req.user?.id;
@@ -111,6 +126,11 @@ router.post(
       let documentUrl = null;
       if (req.file) {
         documentUrl = generateOnDutyDocumentUrl(req.file.filename);
+        console.log('✅ Document uploaded successfully:');
+        console.log('   Filename:', req.file.filename);
+        console.log('   Path:', req.file.path);
+        console.log('   URL:', documentUrl);
+        console.log('   Size:', (req.file.size / 1024).toFixed(2), 'KB');
       }
 
       // Insert on-duty request (use student.id from students table, not user_id)
@@ -121,6 +141,205 @@ router.post(
         RETURNING *`,
         [
           student.id, // Use student ID from students table
+          collegeName,
+          startDate,
+          startTime,
+          endDate,
+          endTime,
+          reason,
+          documentUrl,
+        ]
+      );
+
+      res.status(201).json({
+        success: true,
+        message: "On-duty request submitted successfully",
+        data: result.rows[0],
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @route   POST /api/onduty/request-base64
+ * @desc    Create a new on-duty request with base64 document (Alternative method - no multipart)
+ * @access  Private (Student)
+ */
+router.post(
+  "/request-base64",
+  authenticate,
+  authorize("student"),
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const studentId = req.user?.id;
+      const { 
+        collegeName, 
+        startDate, 
+        startTime, 
+        endDate, 
+        endTime, 
+        reason,
+        documentBase64,
+        documentType
+      } = req.body;
+
+      // Validate required fields
+      if (
+        !collegeName ||
+        !startDate ||
+        !startTime ||
+        !endDate ||
+        !endTime ||
+        !reason
+      ) {
+        throw new AppError("All fields are required", 400);
+      }
+
+      // Validate student exists in students table, create if missing
+      let studentCheck = await query(
+        `SELECT id, name, status FROM students WHERE user_id = $1`,
+        [studentId]
+      );
+
+      // Auto-create student record if missing
+      if (studentCheck.rows.length === 0) {
+        const userInfo = await query(`SELECT email FROM users WHERE id = $1`, [
+          studentId,
+        ]);
+
+        if (userInfo.rows.length === 0) {
+          throw new AppError("User not found", 404);
+        }
+
+        const email = userInfo.rows[0].email;
+        const regNumber = Math.floor(
+          100000 + Math.random() * 900000
+        ).toString(); // 6-digit random number
+
+        // Create student record
+        await query(
+          `INSERT INTO students (user_id, name, email, phone, college, department, year, registration_number, status)
+           VALUES ($1, $2, $3, '', 'Default', 'CS', '1st', $4, 'approved')`,
+          [studentId, email.split("@")[0], email, regNumber]
+        );
+
+        // Re-fetch student record
+        studentCheck = await query(
+          `SELECT id, name, status FROM students WHERE user_id = $1`,
+          [studentId]
+        );
+      }
+
+      const student = studentCheck.rows[0];
+
+      // Check if student is approved
+      if (student.status !== "approved") {
+        throw new AppError(
+          `Your student profile is ${student.status}. Only approved students can submit on-duty requests.`,
+          403
+        );
+      }
+
+      // Validate dates
+      const start = new Date(`${startDate}T${startTime}`);
+      const end = new Date(`${endDate}T${endTime}`);
+      const now = new Date();
+
+      // Check if dates are in the past
+      if (start < now) {
+        throw new AppError("Start date/time cannot be in the past", 400);
+      }
+
+      if (end <= start) {
+        throw new AppError("End date/time must be after start date/time", 400);
+      }
+
+      // Check if request is too far in the future (e.g., more than 1 year)
+      const oneYearFromNow = new Date();
+      oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+
+      if (start > oneYearFromNow) {
+        throw new AppError(
+          "On-duty requests cannot be more than one year in advance",
+          400
+        );
+      }
+
+      // Handle base64 document upload
+      let documentUrl = null;
+      if (documentBase64 && documentType) {
+        // Validate file type
+        const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+        if (!allowedTypes.includes(documentType)) {
+          throw new AppError(
+            "Invalid file type. Only PDF and images (JPEG, PNG) are allowed.",
+            400
+          );
+        }
+
+        // Determine file extension
+        const extMap: { [key: string]: string } = {
+          'application/pdf': '.pdf',
+          'image/jpeg': '.jpg',
+          'image/jpg': '.jpg',
+          'image/png': '.png'
+        };
+        const ext = extMap[documentType] || '.pdf';
+
+        // Generate unique filename
+        const filename = `${uuidv4()}${ext}`;
+        
+        // Use same uploads directory as configured in server
+        const uploadsRoot = path.resolve(
+          process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads")
+        );
+        const uploadsDir = path.join(uploadsRoot, 'onduty-documents');
+        
+        // Ensure directory exists
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+
+        const filePath = path.join(uploadsDir, filename);
+        
+        console.log('📄 Saving base64 file to:', filePath);
+
+        try {
+          // Remove data:image/xxx;base64, prefix if present
+          const base64Data = documentBase64.replace(/^data:[^;]+;base64,/, '');
+          
+          // Decode and save file
+          const buffer = Buffer.from(base64Data, 'base64');
+          
+          // Check file size (50MB limit)
+          if (buffer.length > 50 * 1024 * 1024) {
+            throw new AppError("File size exceeds 50MB limit", 400);
+          }
+
+          fs.writeFileSync(filePath, buffer);
+          documentUrl = generateOnDutyDocumentUrl(filename);
+          
+          console.log('✅ Base64 document saved successfully:');
+          console.log('   Filename:', filename);
+          console.log('   Path:', filePath);
+          console.log('   URL:', documentUrl);
+          console.log('   Size:', (buffer.length / 1024).toFixed(2), 'KB');
+        } catch (err) {
+          console.error('Base64 file save error:', err);
+          throw new AppError("Failed to save document. Please try again.", 500);
+        }
+      }
+
+      // Insert on-duty request
+      const result = await query(
+        `INSERT INTO on_duty_requests 
+        (student_id, college_name, start_date, start_time, end_date, end_time, reason, document_url, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+        RETURNING *`,
+        [
+          student.id,
           collegeName,
           startDate,
           startTime,
