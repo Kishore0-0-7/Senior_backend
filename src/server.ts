@@ -8,6 +8,7 @@ import path from "path";
 import fs from "fs";
 import { errorHandler } from "./middleware/errorHandler";
 import { notFoundHandler } from "./middleware/notFoundHandler";
+import { query } from "./config/database";
 
 // Import routes
 import authRoutes from "./routes/auth.routes";
@@ -110,6 +111,62 @@ app.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   });
+});
+
+// Database connection test endpoint
+app.get("/api/test-db", async (req: Request, res: Response) => {
+  try {
+    // Test basic connection with a simple query
+    const result = await query("SELECT NOW() as current_time, version() as db_version");
+    
+    // Get table count
+    const tablesResult = await query(`
+      SELECT COUNT(*) as table_count 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+    `);
+
+    // Get some basic stats
+    const statsQueries = await Promise.all([
+      query("SELECT COUNT(*) as count FROM users"),
+      query("SELECT COUNT(*) as count FROM students"),
+      query("SELECT COUNT(*) as count FROM events"),
+    ]);
+
+    res.json({
+      success: true,
+      message: "Database connection successful",
+      data: {
+        connected: true,
+        timestamp: result.rows[0].current_time,
+        database: {
+          name: process.env.DB_NAME || "student_event_management",
+          host: process.env.DB_HOST || "localhost",
+          port: process.env.DB_PORT || "5432",
+          version: result.rows[0].db_version,
+        },
+        tables: {
+          total: parseInt(tablesResult.rows[0].table_count),
+        },
+        records: {
+          users: parseInt(statsQueries[0].rows[0].count),
+          students: parseInt(statsQueries[1].rows[0].count),
+          events: parseInt(statsQueries[2].rows[0].count),
+        },
+      },
+    });
+  } catch (error: any) {
+    console.error("Database connection test failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "Database connection failed",
+      error: {
+        message: error.message,
+        code: error.code,
+        detail: process.env.NODE_ENV === "development" ? error.stack : undefined,
+      },
+    });
+  }
 });
 
 // API Routes

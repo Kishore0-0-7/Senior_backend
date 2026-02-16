@@ -3,6 +3,7 @@ import { query } from "../config/database";
 import { AppError } from "../middleware/errorHandler";
 import { authenticate, authorize, AuthRequest } from "../middleware/auth";
 import { uploadOnDutyDocument, uploadOnDutySelfie } from "../config/upload";
+import { generateOnDutyDocumentUrl, generateOnDutySelfieUrl } from "../utils/urlHelper";
 import path from "path";
 import fs from "fs";
 
@@ -109,7 +110,7 @@ router.post(
       // Get document URL if file was uploaded
       let documentUrl = null;
       if (req.file) {
-        documentUrl = `/uploads/onduty-documents/${req.file.filename}`;
+        documentUrl = generateOnDutyDocumentUrl(req.file.filename);
       }
 
       // Insert on-duty request (use student.id from students table, not user_id)
@@ -323,7 +324,7 @@ router.post(
       // Get selfie URL if file was uploaded
       let selfieUrl = null;
       if (req.file) {
-        selfieUrl = `/uploads/onduty-selfies/${req.file.filename}`;
+        selfieUrl = generateOnDutySelfieUrl(req.file.filename);
       }
 
       // Insert attendance record
@@ -699,7 +700,7 @@ router.put(
             fs.unlinkSync(oldFilePath);
           }
         }
-        documentUrl = `/uploads/onduty/${req.file.filename}`;
+        documentUrl = generateOnDutyDocumentUrl(req.file.filename);
       }
 
       // Build update query dynamically based on provided fields

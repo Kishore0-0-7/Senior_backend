@@ -3,6 +3,7 @@ import { query } from "../config/database";
 import { AppError } from "../middleware/errorHandler";
 import { authenticate, authorize, AuthRequest } from "../middleware/auth";
 import { uploadProfilePhoto } from "../config/upload";
+import { generateProfilePhotoUrl } from "../utils/urlHelper";
 
 const router = Router();
 
@@ -163,10 +164,8 @@ router.post(
         }
       }
 
-      // Generate the URL for the uploaded file
-      const baseUrl =
-        process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-      const photoUrl = `${baseUrl}/uploads/profile-photos/${req.file.filename}`;
+      // Generate the URL for the uploaded file using URL helper
+      const photoUrl = generateProfilePhotoUrl(req.file.filename);
 
       // Update the student's profile photo URL in the database
       const result = await query(

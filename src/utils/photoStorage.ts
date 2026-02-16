@@ -1,6 +1,7 @@
 import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
+import { generateAttendancePhotoUrl } from "./urlHelper";
 
 const getMaxPhotoSizeBytes = () => {
   const envValue = process.env.MAX_ATTENDANCE_PHOTO_SIZE_MB;
@@ -59,8 +60,8 @@ export const saveAttendancePhoto = async (
     // Get file size
     const fileSize = imageBuffer.length;
 
-    // Return relative URL
-    const photoUrl = `/uploads/attendance-photos/${fileName}`;
+    // Return full URL using the URL helper
+    const photoUrl = generateAttendancePhotoUrl(fileName);
 
     return {
       photoUrl,

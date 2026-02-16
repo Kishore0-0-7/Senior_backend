@@ -2,6 +2,7 @@ import { Router, Response, NextFunction } from "express";
 import { query } from "../config/database";
 import { AppError } from "../middleware/errorHandler";
 import { authenticate, authorize, AuthRequest } from "../middleware/auth";
+import { generateCertificateUrl } from "../utils/urlHelper";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -35,13 +36,12 @@ const { uploadsRoot, certificatesRoot } = (() => {
   return { uploadsRoot: root, certificatesRoot: certificatesDir };
 })();
 
-const CERTIFICATES_URL_PREFIX = "/uploads/certificates";
-
 const getStudentEmailFolder = (email: string) =>
   email.replace(/@/g, "_at_").replace(/\./g, "_");
 
+// Use the URL helper for building certificate URLs
 const buildCertificateUrl = (folderName: string, filename: string) =>
-  `${CERTIFICATES_URL_PREFIX}/${folderName}/${filename}`;
+  generateCertificateUrl(folderName, filename);
 
 const buildCertificatePathCandidates = (fileUrl: string | undefined | null) => {
   if (!fileUrl) {
