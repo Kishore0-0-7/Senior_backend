@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "migrate": "node -r ts-node/register src/database/migrate.ts",
-    "seed": "node -r ts-node/register src/database/seed.ts"
+    "seed": "node -r ts-node/register src/database/seed.ts",
+    "fix-urls": "node scripts/fix-database-urls.js"
   },
   "keywords": [
     "student",

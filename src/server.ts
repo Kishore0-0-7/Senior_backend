@@ -56,11 +56,27 @@ ensureDirectory(onDutyDocumentsRoot);
 ensureDirectory(onDutySelfiesRoot);
 
 // Middleware
-app.use(helmet()); // Security headers
+// Configure Helmet with relaxed CSP for file serving
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        imgSrc: ["'self'", "data:", "blob:", "*"],
+        mediaSrc: ["'self'", "data:", "blob:", "*"],
+        objectSrc: ["'self'", "data:", "blob:"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+      },
+    },
+  })
+);
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN || "*",
     credentials: true,
+    exposedHeaders: ['Content-Type', 'Content-Disposition'],
   })
 );
 app.use(compression()); // Compress responses
@@ -77,6 +93,19 @@ app.get(
     try {
       const { folder, file } = req.params;
       const primaryPath = path.join(certificatesRoot, folder, file);
+
+      // Set proper headers for all certificate responses
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      
+      const ext = path.extname(file).toLowerCase();
+      if (ext === '.pdf') {
+        res.setHeader('Content-Type', 'application/pdf');
+      } else if (['.jpg', '.jpeg'].includes(ext)) {
+        res.setHeader('Content-Type', 'image/jpeg');
+      } else if (ext === '.png') {
+        res.setHeader('Content-Type', 'image/png');
+      }
 
       if (fs.existsSync(primaryPath)) {
         return res.sendFile(primaryPath);
@@ -102,14 +131,40 @@ app.get(
   }
 );
 
-// Serve static files for all upload types with detailed logging
+// Serve static files for all upload types with detailed logging and proper headers
 app.use("/uploads", (req, res, next) => {
   const requestedPath = path.join(uploadsRoot, req.path);
   console.log(`📁 Static file request: ${req.path}`);
   console.log(`   Full path: ${requestedPath}`);
   console.log(`   Exists: ${fs.existsSync(requestedPath)}`);
+  
+  // Set proper CORS and cache headers for file access
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Cache-Control', 'public, max-age=31536000');
+  
   next();
-}, express.static(uploadsRoot));
+}, express.static(uploadsRoot, {
+  // Set proper MIME types
+  setHeaders: (res, filePath) => {
+    const ext = path.extname(filePath).toLowerCase();
+    if (ext === '.pdf') {
+      res.setHeader('Content-Type', 'application/pdf');
+    } else if (['.jpg', '.jpeg'].includes(ext)) {
+      res.setHeader('Content-Type', 'image/jpeg');
+    } else if (ext === '.png') {
+      res.setHeader('Content-Type', 'image/png');
+    } else if (ext === '.webp') {
+      res.setHeader('Content-Type', 'image/webp');
+    } else if (ext === '.gif') {
+      res.setHeader('Content-Type', 'image/gif');
+    } else if (ext === '.doc') {
+      res.setHeader('Content-Type', 'application/msword');
+    } else if (ext === '.docx') {
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    }
+  }
+}));
 
 // Specific routes for different upload types (with better error handling)
 app.get('/uploads/onduty-documents/:filename', (req: Request, res: Response) => {
@@ -118,6 +173,13 @@ app.get('/uploads/onduty-documents/:filename', (req: Request, res: Response) => 
   console.log(`   Path: ${filePath}`);
   
   if (fs.existsSync(filePath)) {
+    // Set proper headers
+    const ext = path.extname(filePath).toLowerCase();
+    if (ext === '.pdf') {
+      res.setHeader('Content-Type', 'application/pdf');
+    }
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.sendFile(filePath);
   } else {
     console.log(`   ❌ File not found`);
@@ -135,6 +197,15 @@ app.get('/uploads/onduty-selfies/:filename', (req: Request, res: Response) => {
   console.log(`   Path: ${filePath}`);
   
   if (fs.existsSync(filePath)) {
+    // Set proper headers for images
+    const ext = path.extname(filePath).toLowerCase();
+    if (['.jpg', '.jpeg'].includes(ext)) {
+      res.setHeader('Content-Type', 'image/jpeg');
+    } else if (ext === '.png') {
+      res.setHeader('Content-Type', 'image/png');
+    }
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.sendFile(filePath);
   } else {
     console.log(`   ❌ File not found`);
@@ -152,6 +223,15 @@ app.get('/uploads/attendance-photos/:filename', (req: Request, res: Response) =>
   console.log(`   Path: ${filePath}`);
   
   if (fs.existsSync(filePath)) {
+    // Set proper headers for images
+    const ext = path.extname(filePath).toLowerCase();
+    if (['.jpg', '.jpeg'].includes(ext)) {
+      res.setHeader('Content-Type', 'image/jpeg');
+    } else if (ext === '.png') {
+      res.setHeader('Content-Type', 'image/png');
+    }
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.sendFile(filePath);
   } else {
     console.log(`   ❌ File not found`);
